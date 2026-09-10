@@ -42,6 +42,9 @@ def read_index():
 
 class TranslateRequest(BaseModel):
     text: str
+    target_language: str | None = None
+    model: str | None = None
+    verify_back_translation: bool = False
 
 class XianyuTranslateRequest(BaseModel):
     text: str
@@ -377,54 +380,128 @@ def translate_logic(request: TranslateRequest, x_api_key: str = Header(None)):
     if not x_api_key:
         raise HTTPException(status_code=401, detail="Vui lòng nhập Key")
 
-    # Cấu hình Antigravity của bạn (Support biến môi trường khi deploy)
-    ANTIGRAVITY_URL = os.getenv("ANTIGRAVITY_URL", "http://host.docker.internal:8045/v1/chat/completions") 
+    if request.target_language is not None and not request.target_language.strip():
+        raise HTTPException(status_code=400, detail="target_language must not be empty")
 
-    
-    payload = {
-        "model": "gemini-3-flash-agent",
-        "messages": [
-            {
-                "role": "system", 
-                "content": "You are a specialized Vietnamese-Chinese translator. If input is Vietnamese, translate to Chinese (Mandarin). If input is Chinese, translate to Vietnamese. Return ONLY the translation."
-            },
-            {"role": "user", "content": request.text}
-        ],
-        "temperature": 0.2
-    }
+    if request.model is not None and not request.model.strip():
+        raise HTTPException(status_code=400, detail="model must not be empty")
+
+    selected_model = (request.model.strip() if request.model else None) or "gemini-3-flash-agent"
+
+    if request.target_language is None:
+        payload = {
+            "model": selected_model,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": "You are a specialized Vietnamese-Chinese translator. If input is Vietnamese, translate to Chinese (Mandarin). If input is Chinese, translate to Vietnamese. Return ONLY the translation."
+                },
+                {"role": "user", "content": request.text}
+            ],
+            "temperature": 0.2
+        }
+    else:
+        target_lang = request.target_language.strip()
+        system_content = (
+            "You are a professional translator.\n"
+            f"Target language: {target_lang}\n"
+            "Detect the source language of the input text.\n"
+            f"Translate the input text into {target_lang}.\n"
+        )
+        if request.verify_back_translation:
+            system_content += (
+                "If the target language is NOT Vietnamese, and the detected source language IS Vietnamese, "
+                "translate your primary translation back to Vietnamese and provide it in 'back_translated_text'. "
+                "Otherwise, 'back_translated_text' must be empty string \"\".\n"
+            )
+        else:
+            system_content += "'back_translated_text' must be empty string \"\".\n"
+
+        system_content += (
+            "Return ONLY valid JSON in the format:\n"
+            '{"result": "...", "source_language": "...", "back_translated_text": "..."}'
+        )
+
+        payload = {
+            "model": selected_model,
+            "messages": [
+                {"role": "system", "content": system_content},
+                {"role": "user", "content": request.text}
+            ],
+            "temperature": 0.2
+        }
+
+    antigravity_url = os.getenv("ANTIGRAVITY_URL", DEFAULT_ANTIGRAVITY_URL)
 
     try:
         response = requests.post(
-            ANTIGRAVITY_URL, 
-            json=payload, 
+            antigravity_url,
+            json=payload,
             headers={"Authorization": f"Bearer {x_api_key}"},
-            timeout=90 # Đảm bảo chết trước 100s của Cloudflare để báo lỗi rõ ràng
+            timeout=90
         )
         api_response = response.json()
         if 'choices' not in api_response:
-            # Throw explicitly formatted error if structural properties are missing
-            raise Exception(f"Antigravity API Error: {api_response}")
-        
-        result = api_response['choices'][0]['message']['content'].strip()
+            raise HTTPException(status_code=500, detail=f"Antigravity API Error: {api_response}")
+
+        content = api_response['choices'][0]['message']['content'].strip()
+
+        if request.target_language is None:
+            result = content
+            source_language = ""
+            back_translated_text = ""
+        else:
+            if content.startswith("```json"):
+                content = content[7:]
+            elif content.startswith("```"):
+                content = content[3:]
+            if content.endswith("```"):
+                content = content[:-3]
+            content = content.strip()
+
+            parsed = json.loads(content)
+            if not isinstance(parsed, dict) or "result" not in parsed:
+                raise HTTPException(status_code=500, detail="Invalid translation response format")
+
+            result = parsed.get("result")
+            if not isinstance(result, str):
+                raise HTTPException(status_code=500, detail="Result must be a string")
+
+            source_language = parsed.get("source_language", "")
+            back_translated_text = parsed.get("back_translated_text", "")
+            if not isinstance(back_translated_text, str):
+                raise HTTPException(status_code=500, detail="Invalid back_translated_text format")
 
         # Lưu lịch sử và cập nhật xếp hạng (count)
         existing = db.get(History.original == request.text)
         if existing:
             db.update({
-                'count': existing['count'] + 1, 
+                'count': existing['count'] + 1,
                 'time': str(datetime.datetime.now())
             }, History.original == request.text)
         else:
             db.insert({
-                'original': request.text, 
-                'translated': result, 
-                'count': 1, 
+                'original': request.text,
+                'translated': result,
+                'count': 1,
                 'time': str(datetime.datetime.now())
             })
 
-        return {"result": result}
+        if request.target_language is None:
+            return {"result": result}
+
+        return {
+            "result": result,
+            "source_language": source_language,
+            "back_translated_text": back_translated_text,
+        }
+    except HTTPException:
+        raise
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=500, detail="AI did not return valid JSON")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.post("/translate_xianyu")
 def translate_xianyu_logic(request: XianyuTranslateRequest, x_api_key: str = Header(None)):
