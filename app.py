@@ -12,7 +12,7 @@ import re
 # Cố định thư mục gốc theo vị trí file app.py này
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-DEFAULT_ANTIGRAVITY_URL = "https://agentrouter.org/v1/chat/completions"
+DEFAULT_ANTIGRAVITY_URL = "http://192.168.1.179:8045/v1/chat/completions"
 
 app = FastAPI()
 db = TinyDB(os.path.join(BASE_DIR, 'history_db.json'))
