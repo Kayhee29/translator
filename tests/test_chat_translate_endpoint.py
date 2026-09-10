@@ -121,6 +121,37 @@ def test_chat_translate_returns_translations_for_requested_ids():
     assert response.json()["results"][1]["translated_text"] == "How much?"
 
 
+def test_chat_translate_incoming_message_targets_vietnamese():
+    mocked_response = Mock()
+    mocked_response.json.return_value = {
+        "choices": [
+            {
+                "message": {
+                    "content": '{"results":[{"id":"m1","translated_text":"Xin chào","source_language":"Chinese","back_translated_text":""}]}'
+                }
+            }
+        ]
+    }
+
+    with patch("app.requests.post", return_value=mocked_response) as mock_post:
+        response = client.post(
+            "/chat_translate",
+            headers={"x-api-key": "test-key"},
+            json={
+                "target_language": "Chinese",
+                "model": "claude-sonnet-4-6",
+                "messages": [{"id": "m1", "role": "role_a", "content": "你好"}],
+                "message_ids_to_translate": ["m1"],
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.json()["results"][0]["translated_text"] == "Xin chào"
+    prompt = mock_post.call_args.kwargs["json"]["messages"][0]["content"]
+    assert "role_a" in prompt
+    assert "Vietnamese" in prompt
+
+
 def test_chat_translate_handles_sse_upstream_response():
     mocked_response = Mock()
     mocked_response.json.side_effect = ValueError("not a JSON envelope")

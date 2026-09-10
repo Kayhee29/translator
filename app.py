@@ -136,8 +136,8 @@ def build_chat_translate_prompt(target_language, context_messages, message_ids_t
 
     if verify_back_translation:
         verify_instruction = (
-            "If the target language is NOT Vietnamese, and the detected source language of the message IS Vietnamese, "
-            "translate your primary translation back to Vietnamese and provide it in 'back_translated_text'. "
+            "Only for a role_b message whose detected source language IS Vietnamese and whose primary target is NOT Vietnamese, "
+            "translate the primary translation back to Vietnamese and provide it in 'back_translated_text'. "
             "Otherwise, 'back_translated_text' must be empty string \"\".\n"
         )
         json_example = '{"results":[{"id":"message-id","translated_text":"...","source_language":"...","back_translated_text":"..."}]}'
@@ -148,7 +148,10 @@ def build_chat_translate_prompt(target_language, context_messages, message_ids_t
     return (
         "You are a context-aware translator.\n"
         f"Translate only these message ids: {ids_block}\n"
-        f"Target language: {target_language}\n"
+        f"The selected target language for the user's outgoing messages is {target_language}.\n"
+        "Choose the primary target by message role: role_b (the user's outgoing message) must be translated into the selected target language; "
+        "role_a (the counterpart's incoming message) must be translated into Vietnamese. "
+        "Do not use one target for all roles when their roles differ.\n"
         "Detect the source language for each translated message.\n"
         "Use the nearby conversation context to preserve meaning, tone, and references.\n"
         f"{verify_instruction}"
@@ -505,14 +508,20 @@ def translate_logic(request: TranslateRequest, x_api_key: str = Header(None)):
         target_lang = request.target_language.strip()
         system_content = (
             "You are a professional translator.\n"
-            f"Target language: {target_lang}\n"
             "Detect the source language of the input text.\n"
-            f"Translate the input text into {target_lang}.\n"
         )
+        if target_lang.casefold() == "vietnamese":
+            system_content += "Translate the input text into Vietnamese.\n"
+        else:
+            system_content += (
+                f"The selected target language is {target_lang}. If the input is Vietnamese, translate it into {target_lang}. "
+                f"If the input is already in the selected target language ({target_lang}), translate it into Vietnamese. "
+                f"For any other source language, translate it into {target_lang}.\n"
+            )
         if request.verify_back_translation:
             system_content += (
-                "If the target language is NOT Vietnamese, and the detected source language IS Vietnamese, "
-                "translate your primary translation back to Vietnamese and provide it in 'back_translated_text'. "
+                "Only when the detected source language is Vietnamese and the primary target language is not Vietnamese, "
+                "translate the primary translation back to Vietnamese and provide it in 'back_translated_text'. "
                 "Otherwise, 'back_translated_text' must be empty string \"\".\n"
             )
         else:

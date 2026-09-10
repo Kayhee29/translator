@@ -75,6 +75,39 @@ def test_translate_forwards_selected_model_and_verify_flag_and_returns_structure
     assert "back_translated_text" in prompt_content
 
 
+def test_translate_reverses_selected_language_input_to_vietnamese():
+    mocked_response = Mock()
+    mocked_response.json.return_value = {
+        "choices": [
+            {
+                "message": {
+                    "content": '{"result":"Xin chào","source_language":"Chinese","back_translated_text":""}'
+                }
+            }
+        ]
+    }
+
+    with patch("app.requests.post", return_value=mocked_response) as mock_post:
+        response = client.post(
+            "/translate",
+            headers={"x-api-key": "test-key"},
+            json={
+                "text": "你好",
+                "target_language": "Chinese",
+                "model": "claude-sonnet-4-6",
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "result": "Xin chào",
+        "source_language": "Chinese",
+        "back_translated_text": "",
+    }
+    prompt = mock_post.call_args.kwargs["json"]["messages"][0]["content"]
+    assert "input is already in the selected target language" in prompt
+
+
 def test_translate_omitted_model_uses_gemini_3_flash_agent():
     mocked_response = Mock()
     mocked_response.json.return_value = {
