@@ -205,3 +205,54 @@ def test_chat_translate_rejects_missing_ids_from_upstream():
         )
 
     assert response.status_code == 500
+
+
+def test_list_models_requires_api_key():
+    response = client.get("/models")
+    assert response.status_code == 401
+
+
+def test_list_models_returns_normalized_models():
+    mocked_response = Mock()
+    mocked_response.json.return_value = {
+        "data": [
+            {"id": "gemini-3.8-flash-high"},
+            {"id": "gemini-3-flash", "name": "Gemini 3 Flash"},
+        ]
+    }
+    mocked_response.raise_for_status = Mock()
+
+    with patch("app.requests.get", return_value=mocked_response) as mock_get:
+        response = client.get("/models", headers={"x-api-key": "test-key"})
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "models": [
+            {"id": "gemini-3.8-flash-high", "name": "gemini-3.8-flash-high"},
+            {"id": "gemini-3-flash", "name": "Gemini 3 Flash"},
+        ]
+    }
+    mock_get.assert_called_once()
+    call_args, call_kwargs = mock_get.call_args
+    assert call_args[0].endswith("/v1/models")
+    assert call_kwargs["headers"] == {"Authorization": "Bearer test-key"}
+
+
+def test_list_models_returns_502_on_malformed_model_data():
+    mocked_response = Mock()
+    mocked_response.json.return_value = {"data": [{"name": "missing-id"}]}
+    mocked_response.raise_for_status = Mock()
+
+    with patch("app.requests.get", return_value=mocked_response):
+        response = client.get("/models", headers={"x-api-key": "test-key"})
+
+    assert response.status_code == 502
+
+
+def test_list_models_returns_502_on_upstream_failure():
+    import requests
+
+    with patch("app.requests.get", side_effect=requests.RequestException("connection failed")):
+        response = client.get("/models", headers={"x-api-key": "test-key"})
+
+    assert response.status_code == 502

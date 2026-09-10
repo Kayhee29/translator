@@ -171,6 +171,23 @@ def normalize_models_response(payload: dict) -> list[dict]:
     return normalized
 
 
+@app.get("/models")
+def list_models(x_api_key: str = Header(None)):
+    if not x_api_key:
+        raise HTTPException(status_code=401, detail="Vui long nhap Key")
+    try:
+        models_url = build_models_url(os.getenv("ANTIGRAVITY_URL", DEFAULT_ANTIGRAVITY_URL))
+        response = requests.get(
+            models_url,
+            headers={"Authorization": f"Bearer {x_api_key}"},
+            timeout=15,
+        )
+        response.raise_for_status()
+        return {"models": normalize_models_response(response.json())}
+    except (ValueError, requests.RequestException, json.JSONDecodeError) as exc:
+        raise HTTPException(status_code=502, detail=f"Không thể lấy danh sách model: {exc}")
+
+
 @app.post("/capture_dom_product")
 def capture_dom_product(payload: DomProductPayload, x_api_key: str = Header(None)):
     product_id = payload.product_id
