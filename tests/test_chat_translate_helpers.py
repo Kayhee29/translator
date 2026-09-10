@@ -10,6 +10,7 @@ from app import (
     build_reduced_context_window,
     normalize_models_response,
     split_bulk_paste_into_messages,
+    strip_markdown_fence,
 )
 
 
@@ -177,4 +178,21 @@ def test_build_chat_translate_prompt_with_verify_mentions_back_translation_and_v
     )
     assert "back_translated_text" in prompt
     assert "Vietnamese" in prompt
+
+
+def test_strip_markdown_fence_removes_json_fence():
+    assert strip_markdown_fence('```json\n{"key": "value"}\n```') == '{"key": "value"}'
+
+
+def test_strip_markdown_fence_removes_generic_fence():
+    assert strip_markdown_fence('```\n{"key": "value"}\n```') == '{"key": "value"}'
+
+
+def test_strip_markdown_fence_leaves_unfenced_content_intact():
+    assert strip_markdown_fence('{"key": "value"}') == '{"key": "value"}'
+
+
+def test_strip_markdown_fence_handles_surrounding_whitespace():
+    assert strip_markdown_fence('   \n```json\n{"key": "value"}\n```\n  ') == '{"key": "value"}'
+
 

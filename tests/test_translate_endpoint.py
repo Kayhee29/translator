@@ -173,3 +173,163 @@ def test_translate_rejects_invalid_json_when_target_language_provided():
         )
 
     assert response.status_code == 500
+
+
+def test_translate_normalizes_null_back_translation_to_empty_string():
+    mocked_response = Mock()
+    mocked_response.json.return_value = {
+        "choices": [
+            {
+                "message": {
+                    "content": '{"result":"Hello","source_language":"Vietnamese","back_translated_text":null}'
+                }
+            }
+        ]
+    }
+
+    with patch("app.requests.post", return_value=mocked_response):
+        response = client.post(
+            "/translate",
+            headers={"x-api-key": "test-key"},
+            json={
+                "text": "Xin chào",
+                "target_language": "English",
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.json()["back_translated_text"] == ""
+
+
+def test_translate_rejects_null_result():
+    mocked_response = Mock()
+    mocked_response.json.return_value = {
+        "choices": [
+            {
+                "message": {
+                    "content": '{"result":null,"source_language":"Vietnamese"}'
+                }
+            }
+        ]
+    }
+
+    with patch("app.requests.post", return_value=mocked_response):
+        response = client.post(
+            "/translate",
+            headers={"x-api-key": "test-key"},
+            json={
+                "text": "Xin chào",
+                "target_language": "English",
+            },
+        )
+
+    assert response.status_code == 500
+
+
+def test_translate_rejects_missing_result():
+    mocked_response = Mock()
+    mocked_response.json.return_value = {
+        "choices": [
+            {
+                "message": {
+                    "content": '{"source_language":"Vietnamese"}'
+                }
+            }
+        ]
+    }
+
+    with patch("app.requests.post", return_value=mocked_response):
+        response = client.post(
+            "/translate",
+            headers={"x-api-key": "test-key"},
+            json={
+                "text": "Xin chào",
+                "target_language": "English",
+            },
+        )
+
+    assert response.status_code == 500
+
+
+def test_translate_rejects_non_string_result():
+    mocked_response = Mock()
+    mocked_response.json.return_value = {
+        "choices": [
+            {
+                "message": {
+                    "content": '{"result":123,"source_language":"Vietnamese"}'
+                }
+            }
+        ]
+    }
+
+    with patch("app.requests.post", return_value=mocked_response):
+        response = client.post(
+            "/translate",
+            headers={"x-api-key": "test-key"},
+            json={
+                "text": "Xin chào",
+                "target_language": "English",
+            },
+        )
+
+    assert response.status_code == 500
+
+
+def test_translate_handles_upstream_request_failure():
+    import requests
+
+    with patch("app.requests.post", side_effect=requests.RequestException("connection failed")):
+        response = client.post(
+            "/translate",
+            headers={"x-api-key": "test-key"},
+            json={
+                "text": "Xin chào",
+                "target_language": "English",
+            },
+        )
+
+    assert response.status_code == 500
+
+
+def test_translate_handles_upstream_missing_choices():
+    mocked_response = Mock()
+    mocked_response.json.return_value = {"error": "Rate limit exceeded"}
+
+    with patch("app.requests.post", return_value=mocked_response):
+        response = client.post(
+            "/translate",
+            headers={"x-api-key": "test-key"},
+            json={
+                "text": "Xin chào",
+                "target_language": "English",
+            },
+        )
+
+    assert response.status_code == 500
+
+
+def test_translate_rejects_non_string_back_translation():
+    mocked_response = Mock()
+    mocked_response.json.return_value = {
+        "choices": [
+            {
+                "message": {
+                    "content": '{"result":"Hello","source_language":"Vietnamese","back_translated_text":123}'
+                }
+            }
+        ]
+    }
+
+    with patch("app.requests.post", return_value=mocked_response):
+        response = client.post(
+            "/translate",
+            headers={"x-api-key": "test-key"},
+            json={
+                "text": "Xin chào",
+                "target_language": "English",
+            },
+        )
+
+    assert response.status_code == 500
+

@@ -188,6 +188,18 @@ def normalize_models_response(payload: dict) -> list[dict]:
     return normalized
 
 
+def strip_markdown_fence(text: str) -> str:
+    cleaned = text.strip()
+    if cleaned.startswith("```json"):
+        cleaned = cleaned[7:]
+    elif cleaned.startswith("```"):
+        cleaned = cleaned[3:]
+    if cleaned.endswith("```"):
+        cleaned = cleaned[:-3]
+    return cleaned.strip()
+
+
+
 @app.get("/models")
 def list_models(x_api_key: str = Header(None)):
     if not x_api_key:
@@ -465,13 +477,7 @@ def translate_logic(request: TranslateRequest, x_api_key: str = Header(None)):
             source_language = ""
             back_translated_text = ""
         else:
-            if content.startswith("```json"):
-                content = content[7:]
-            elif content.startswith("```"):
-                content = content[3:]
-            if content.endswith("```"):
-                content = content[:-3]
-            content = content.strip()
+            content = strip_markdown_fence(content)
 
             parsed = json.loads(content)
             if not isinstance(parsed, dict) or "result" not in parsed:
@@ -481,9 +487,16 @@ def translate_logic(request: TranslateRequest, x_api_key: str = Header(None)):
             if not isinstance(result, str):
                 raise HTTPException(status_code=500, detail="Result must be a string")
 
-            source_language = parsed.get("source_language", "")
-            back_translated_text = parsed.get("back_translated_text", "")
-            if not isinstance(back_translated_text, str):
+            source_language = parsed.get("source_language")
+            if source_language is None:
+                source_language = ""
+            elif not isinstance(source_language, str):
+                source_language = str(source_language)
+
+            back_translated_text = parsed.get("back_translated_text")
+            if back_translated_text is None:
+                back_translated_text = ""
+            elif not isinstance(back_translated_text, str):
                 raise HTTPException(status_code=500, detail="Invalid back_translated_text format")
 
         # Lưu lịch sử và cập nhật xếp hạng (count)
@@ -629,17 +642,7 @@ def translate_xianyu_batch_logic(request: XianyuBatchTranslateRequest, x_api_key
         if 'choices' not in api_response:
             raise Exception(f"Antigravity API Error: {api_response}")
         
-        result_text = api_response['choices'][0]['message']['content'].strip()
-        
-        # Clean potential markdown formatting
-        if result_text.startswith("```json"):
-            result_text = result_text[7:]
-        elif result_text.startswith("```"):
-            result_text = result_text[3:]
-        if result_text.endswith("```"):
-            result_text = result_text[:-3]
-            
-        result_text = result_text.strip()
+        result_text = strip_markdown_fence(api_response['choices'][0]['message']['content'])
         
         try:
             translated_dict = json.loads(result_text)
@@ -998,17 +1001,7 @@ def chat_translate(request: ChatTranslateRequest, x_api_key: str = Header(None))
         if "choices" not in api_response:
             raise HTTPException(status_code=500, detail=f"Antigravity API Error: {api_response}")
 
-        result_text = api_response["choices"][0]["message"]["content"].strip()
-        
-        # Clean potential markdown formatting
-        if result_text.startswith("```json"):
-            result_text = result_text[7:]
-        elif result_text.startswith("```"):
-            result_text = result_text[3:]
-        if result_text.endswith("```"):
-            result_text = result_text[:-3]
-            
-        result_text = result_text.strip()
+        result_text = strip_markdown_fence(api_response["choices"][0]["message"]["content"])
 
         translated_payload = json.loads(result_text)
         results = translated_payload.get("results")
@@ -1016,15 +1009,10 @@ def chat_translate(request: ChatTranslateRequest, x_api_key: str = Header(None))
         if not isinstance(results, list):
             raise HTTPException(status_code=500, detail="Invalid translation response format")
 
-        returned_ids = {item.get("id") for item in results}
-        missing_ids = [message_id for message_id in request.message_ids_to_translate if message_id not in returned_ids]
-        if missing_ids:
-            raise HTTPException(status_code=500, detail=f"Missing translated ids: {missing_ids}")
-
         for item in results:
             if not isinstance(item, dict):
                 raise HTTPException(status_code=500, detail="Each translation result must be an object")
-            if not item.get("id") or not item.get("translated_text"):
+            if not item.get("id") or not item.get("translated_text") or not isinstance(item.get("translated_text"), str):
                 raise HTTPException(status_code=500, detail="Each translation result must include id and translated_text")
             back_translated = item.get("back_translated_text")
             if back_translated is None:
@@ -1033,6 +1021,11 @@ def chat_translate(request: ChatTranslateRequest, x_api_key: str = Header(None))
                 raise HTTPException(status_code=500, detail="back_translated_text must be a string")
             else:
                 item["back_translated_text"] = back_translated
+
+        returned_ids = {item["id"] for item in results}
+        missing_ids = [message_id for message_id in request.message_ids_to_translate if message_id not in returned_ids]
+        if missing_ids:
+            raise HTTPException(status_code=500, detail=f"Missing translated ids: {missing_ids}")
 
         return {"results": results}
     except HTTPException:

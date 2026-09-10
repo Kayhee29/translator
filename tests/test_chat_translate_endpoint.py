@@ -369,3 +369,148 @@ def test_chat_translate_rejects_non_string_back_translation():
 
     assert response.status_code == 500
 
+
+def test_chat_translate_normalizes_null_back_translation():
+    mocked_response = Mock()
+    mocked_response.json.return_value = {
+        "choices": [
+            {
+                "message": {
+                    "content": (
+                        '{"results":['
+                        '{"id":"m1","translated_text":"Hello","source_language":"Vietnamese","back_translated_text":null}'
+                        ']}'
+                    )
+                }
+            }
+        ]
+    }
+
+    with patch("app.requests.post", return_value=mocked_response):
+        response = client.post(
+            "/chat_translate",
+            headers={"x-api-key": "test-key"},
+            json={
+                "target_language": "English",
+                "messages": [{"id": "m1", "role": "role_a", "content": "Xin chào"}],
+                "message_ids_to_translate": ["m1"],
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.json()["results"][0]["back_translated_text"] == ""
+
+
+def test_chat_translate_rejects_upstream_failure():
+    import requests
+
+    with patch("app.requests.post", side_effect=requests.RequestException("timeout")):
+        response = client.post(
+            "/chat_translate",
+            headers={"x-api-key": "test-key"},
+            json={
+                "target_language": "English",
+                "messages": [{"id": "m1", "role": "role_a", "content": "Xin chào"}],
+                "message_ids_to_translate": ["m1"],
+            },
+        )
+
+    assert response.status_code == 500
+
+
+def test_chat_translate_rejects_missing_choices_from_upstream():
+    mocked_response = Mock()
+    mocked_response.json.return_value = {"error": "upstream overload"}
+
+    with patch("app.requests.post", return_value=mocked_response):
+        response = client.post(
+            "/chat_translate",
+            headers={"x-api-key": "test-key"},
+            json={
+                "target_language": "English",
+                "messages": [{"id": "m1", "role": "role_a", "content": "Xin chào"}],
+                "message_ids_to_translate": ["m1"],
+            },
+        )
+
+    assert response.status_code == 500
+
+
+def test_chat_translate_rejects_non_list_results():
+    mocked_response = Mock()
+    mocked_response.json.return_value = {
+        "choices": [
+            {
+                "message": {
+                    "content": '{"results":"not-a-list"}'
+                }
+            }
+        ]
+    }
+
+    with patch("app.requests.post", return_value=mocked_response):
+        response = client.post(
+            "/chat_translate",
+            headers={"x-api-key": "test-key"},
+            json={
+                "target_language": "English",
+                "messages": [{"id": "m1", "role": "role_a", "content": "Xin chào"}],
+                "message_ids_to_translate": ["m1"],
+            },
+        )
+
+    assert response.status_code == 500
+
+
+def test_chat_translate_rejects_non_dict_result_item():
+    mocked_response = Mock()
+    mocked_response.json.return_value = {
+        "choices": [
+            {
+                "message": {
+                    "content": '{"results":["string-item"]}'
+                }
+            }
+        ]
+    }
+
+    with patch("app.requests.post", return_value=mocked_response):
+        response = client.post(
+            "/chat_translate",
+            headers={"x-api-key": "test-key"},
+            json={
+                "target_language": "English",
+                "messages": [{"id": "m1", "role": "role_a", "content": "Xin chào"}],
+                "message_ids_to_translate": ["m1"],
+            },
+        )
+
+    assert response.status_code == 500
+
+
+def test_chat_translate_rejects_missing_translated_text():
+    mocked_response = Mock()
+    mocked_response.json.return_value = {
+        "choices": [
+            {
+                "message": {
+                    "content": '{"results":[{"id":"m1"}]}'
+                }
+            }
+        ]
+    }
+
+    with patch("app.requests.post", return_value=mocked_response):
+        response = client.post(
+            "/chat_translate",
+            headers={"x-api-key": "test-key"},
+            json={
+                "target_language": "English",
+                "messages": [{"id": "m1", "role": "role_a", "content": "Xin chào"}],
+                "message_ids_to_translate": ["m1"],
+            },
+        )
+
+    assert response.status_code == 500
+
+

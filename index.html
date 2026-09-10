@@ -328,10 +328,13 @@
             const modelSelect = document.getElementById("translationModel");
             const verifyCheckbox = document.getElementById("verifyBackTranslation");
 
+            const cached = loadTranslationSettings();
+            const modelValue = modelSelect && modelSelect.value ? modelSelect.value : (cached.model || "");
+
             const settings = {
                 targetLanguage: targetSelect ? targetSelect.value : defaultTranslationSettings.targetLanguage,
                 customTargetLanguage: customInput ? customInput.value.trim() : "",
-                model: modelSelect ? modelSelect.value : "",
+                model: modelValue,
                 verifyBackTranslation: verifyCheckbox ? verifyCheckbox.checked : false,
             };
             try {
@@ -426,7 +429,9 @@
                 }
             } catch (err) {
                 modelSelect.innerHTML = '<option value="">Chưa có model</option>';
-                modelStatus.innerHTML = `<span class="text-red-500 flex items-center gap-1" title="${err.message}"><i class="fas fa-exclamation-circle"></i> ${err.message}</span>`;
+                const msg = err && err.message ? String(err.message) : "Không thể tải danh sách model.";
+                const safeMsg = escapeHtml(msg);
+                modelStatus.innerHTML = `<span class="text-red-500 flex items-center gap-1" title="${safeMsg}"><i class="fas fa-exclamation-circle"></i> ${safeMsg}</span>`;
                 setTranslationEnabled(false);
             }
         }
@@ -776,43 +781,6 @@
             errorEl.classList.remove("hidden");
         }
 
-        // Build Payload
-        function getChatPayloadWithOutgoingDraft(outgoingContent) {
-            const opts = getTranslationOptions();
-            const baseMessages = appState.chat.messages.map((message) => ({
-                id: message.id,
-                role: message.role,
-                content: message.content,
-            }));
-
-            const outgoingDraft = createChatMessage({
-                direction: "outgoing",
-                content: outgoingContent,
-                status: "translating",
-            });
-
-            return {
-                draftMessage: outgoingDraft,
-                payload: {
-                    target_language: opts.target_language,
-                    model: opts.model,
-                    verify_back_translation: opts.verify_back_translation,
-                    messages: [
-                        ...baseMessages,
-                        {
-                            id: outgoingDraft.id,
-                            role: outgoingDraft.role,
-                            content: outgoingDraft.content,
-                        },
-                    ],
-                    message_ids_to_translate: [
-                        ...baseMessages.map((message) => message.id),
-                        outgoingDraft.id,
-                    ],
-                },
-            };
-        }
-
         function renderOutgoingPreview() {
             const preview = appState.chat.outgoingPreview;
             const wrap = document.getElementById("outgoingPreviewWrap");
@@ -881,7 +849,7 @@
                 model: opts.model,
                 verify_back_translation: opts.verify_back_translation,
                 messages: [...baseMessages, draftMessage],
-                message_ids_to_translate: [...baseMessages.map((message) => message.id), draftMessage.id],
+                message_ids_to_translate: [draftMessage.id],
             };
         }
 
@@ -988,6 +956,16 @@
                 renderOutgoingPreview();
                 return;
             }
+            if (content !== appState.chat.outgoingPreview.source || appState.chat.outgoingPreview.status === "translated") {
+                outgoingPreviewRequestId++;
+                appState.chat.outgoingPreview.source = content;
+                appState.chat.outgoingPreview.status = "translating";
+                appState.chat.outgoingPreview.translatedText = "";
+                appState.chat.outgoingPreview.sourceLanguage = "";
+                appState.chat.outgoingPreview.backTranslatedText = "";
+                appState.chat.outgoingPreview.error = "";
+                renderOutgoingPreview();
+            }
             outgoingPreviewTimeout = setTimeout(translateOutgoingPreview, 500);
         });
 
@@ -1015,7 +993,7 @@
                 return;
             }
 
-            if (preview.status !== "translated" || !preview.translatedText) {
+            if (preview.status !== "translated" || !preview.translatedText || preview.source !== source) {
                 setChatError("Vui lòng đợi bản dịch tự động hoàn tất.");
                 return;
             }
@@ -1067,6 +1045,7 @@
         function handleSettingsChange(immediatePreview = false) {
             saveTranslationSettings();
             clearQuickBackTranslate();
+            quickRequestId++;
             outgoingPreviewRequestId++;
             appState.chat.outgoingPreview.sourceLanguage = "";
             appState.chat.outgoingPreview.backTranslatedText = "";
