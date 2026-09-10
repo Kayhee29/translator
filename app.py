@@ -12,7 +12,7 @@ import re
 # Cố định thư mục gốc theo vị trí file app.py này
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-DEFAULT_ANTIGRAVITY_URL = "http://host.docker.internal:8045/v1/chat/completions"
+DEFAULT_ANTIGRAVITY_URL = "http://192.168.1.172:20128/v1/chat/completions"
 
 app = FastAPI()
 db = TinyDB(os.path.join(BASE_DIR, 'history_db.json'))
@@ -235,7 +235,7 @@ def capture_dom_product(payload: DomProductPayload, x_api_key: str = Header(None
                 ],
                 "temperature": 0.2
             }
-            response = requests.post(os.getenv("ANTIGRAVITY_URL", "http://host.docker.internal:8045/v1/chat/completions"), json=payload_ai, headers={"Authorization": f"Bearer {x_api_key}"}, timeout=10)
+            response = requests.post(os.getenv("ANTIGRAVITY_URL", DEFAULT_ANTIGRAVITY_URL), json=payload_ai, headers={"Authorization": f"Bearer {x_api_key}"}, timeout=10)
             result = response.json()['choices'][0]['message']['content'].strip()
             xianyu_db.insert({'original': text, 'translated': result, 'count': 1, 'time': str(datetime.datetime.now())})
             return result
@@ -334,7 +334,7 @@ def capture_chat_product(payload: ChatProductPayload, x_api_key: str = Header(No
                     ],
                     "temperature": 0.2
                 }
-                response = requests.post("http://host.docker.internal:8045/v1/chat/completions", json=payload, headers={"Authorization": f"Bearer {x_api_key}"}, timeout=10)
+                response = requests.post(DEFAULT_ANTIGRAVITY_URL, json=payload, headers={"Authorization": f"Bearer {x_api_key}"}, timeout=10)
                 result = response.json()['choices'][0]['message']['content'].strip()
                 xianyu_db.insert({'original': text, 'translated': result, 'count': 1, 'time': str(datetime.datetime.now())})
                 return result
@@ -547,7 +547,7 @@ def translate_xianyu_logic(request: XianyuTranslateRequest, x_api_key: str = Hea
         return {"result": existing['translated']}
 
     # Cấu hình Antigravity của bạn (Support biến môi trường khi deploy)
-    ANTIGRAVITY_URL = os.getenv("ANTIGRAVITY_URL", "http://host.docker.internal:8045/v1/chat/completions") 
+    ANTIGRAVITY_URL = os.getenv("ANTIGRAVITY_URL", DEFAULT_ANTIGRAVITY_URL) 
 
     
     payload = {
@@ -597,7 +597,7 @@ def translate_xianyu_batch_logic(request: XianyuBatchTranslateRequest, x_api_key
     if not x_api_key:
         raise HTTPException(status_code=401, detail="Vui lòng nhập Key")
 
-    ANTIGRAVITY_URL = os.getenv("ANTIGRAVITY_URL", "http://host.docker.internal:8045/v1/chat/completions") 
+    ANTIGRAVITY_URL = os.getenv("ANTIGRAVITY_URL", DEFAULT_ANTIGRAVITY_URL) 
 
     if not request.texts:
         return {"results": []}
@@ -806,7 +806,7 @@ def capture_goofish_detail(payload: GoofishDetailPayload, x_api_key: str = Heade
                     ],
                     "temperature": 0.2
                 }
-                response = requests.post(os.getenv("ANTIGRAVITY_URL", "http://host.docker.internal:8045/v1/chat/completions"), json=payload_ai, headers={"Authorization": f"Bearer {x_api_key}"}, timeout=10)
+                response = requests.post(os.getenv("ANTIGRAVITY_URL", DEFAULT_ANTIGRAVITY_URL), json=payload_ai, headers={"Authorization": f"Bearer {x_api_key}"}, timeout=10)
                 result = response.json()['choices'][0]['message']['content'].strip()
                 xianyu_db.insert({'original': text, 'translated': result, 'count': 1, 'time': str(datetime.datetime.now())})
                 return result
