@@ -199,6 +199,32 @@ def strip_markdown_fence(text: str) -> str:
     return cleaned.strip()
 
 
+def parse_translation_payload(content: str) -> tuple[dict | None, str]:
+    if not isinstance(content, str) or not content.strip():
+        raise HTTPException(status_code=500, detail="AI did not return valid JSON")
+
+    cleaned = strip_markdown_fence(content).strip()
+    if not cleaned:
+        raise HTTPException(status_code=500, detail="AI did not return valid JSON")
+
+    looks_like_object = cleaned.startswith("{")
+
+    try:
+        parsed = json.loads(cleaned)
+    except json.JSONDecodeError:
+        if looks_like_object:
+            raise HTTPException(status_code=500, detail="AI did not return valid JSON")
+        return None, cleaned
+
+    if isinstance(parsed, dict):
+        return parsed, ""
+
+    if looks_like_object:
+        raise HTTPException(status_code=500, detail="Invalid translation response format")
+
+    return None, cleaned
+
+
 
 @app.get("/models")
 def list_models(x_api_key: str = Header(None)):
@@ -470,34 +496,38 @@ def translate_logic(request: TranslateRequest, x_api_key: str = Header(None)):
         if 'choices' not in api_response:
             raise HTTPException(status_code=500, detail=f"Antigravity API Error: {api_response}")
 
-        content = api_response['choices'][0]['message']['content'].strip()
+        raw_content = api_response['choices'][0]['message'].get('content', '')
 
         if request.target_language is None:
-            result = content
+            result = raw_content.strip()
             source_language = ""
             back_translated_text = ""
         else:
-            content = strip_markdown_fence(content)
+            parsed, fallback_text = parse_translation_payload(raw_content)
 
-            parsed = json.loads(content)
-            if not isinstance(parsed, dict) or "result" not in parsed:
-                raise HTTPException(status_code=500, detail="Invalid translation response format")
+            if parsed is not None:
+                if not isinstance(parsed, dict) or "result" not in parsed:
+                    raise HTTPException(status_code=500, detail="Invalid translation response format")
 
-            result = parsed.get("result")
-            if not isinstance(result, str):
-                raise HTTPException(status_code=500, detail="Result must be a string")
+                result = parsed.get("result")
+                if not isinstance(result, str):
+                    raise HTTPException(status_code=500, detail="Result must be a string")
 
-            source_language = parsed.get("source_language")
-            if source_language is None:
+                source_language = parsed.get("source_language")
+                if source_language is None:
+                    source_language = ""
+                elif not isinstance(source_language, str):
+                    source_language = str(source_language)
+
+                back_translated_text = parsed.get("back_translated_text")
+                if back_translated_text is None:
+                    back_translated_text = ""
+                elif not isinstance(back_translated_text, str):
+                    raise HTTPException(status_code=500, detail="Invalid back_translated_text format")
+            else:
+                result = fallback_text
                 source_language = ""
-            elif not isinstance(source_language, str):
-                source_language = str(source_language)
-
-            back_translated_text = parsed.get("back_translated_text")
-            if back_translated_text is None:
                 back_translated_text = ""
-            elif not isinstance(back_translated_text, str):
-                raise HTTPException(status_code=500, detail="Invalid back_translated_text format")
 
         # Lưu lịch sử và cập nhật xếp hạng (count)
         existing = db.get(History.original == request.text)
@@ -1001,33 +1031,45 @@ def chat_translate(request: ChatTranslateRequest, x_api_key: str = Header(None))
         if "choices" not in api_response:
             raise HTTPException(status_code=500, detail=f"Antigravity API Error: {api_response}")
 
-        result_text = strip_markdown_fence(api_response["choices"][0]["message"]["content"])
+        raw_content = api_response["choices"][0]["message"].get("content", "")
+        parsed, fallback_text = parse_translation_payload(raw_content)
 
-        translated_payload = json.loads(result_text)
-        results = translated_payload.get("results")
+        if parsed is not None:
+            results = parsed.get("results")
 
-        if not isinstance(results, list):
-            raise HTTPException(status_code=500, detail="Invalid translation response format")
+            if not isinstance(results, list):
+                raise HTTPException(status_code=500, detail="Invalid translation response format")
 
-        for item in results:
-            if not isinstance(item, dict):
-                raise HTTPException(status_code=500, detail="Each translation result must be an object")
-            if not item.get("id") or not item.get("translated_text") or not isinstance(item.get("translated_text"), str):
-                raise HTTPException(status_code=500, detail="Each translation result must include id and translated_text")
-            back_translated = item.get("back_translated_text")
-            if back_translated is None:
-                item["back_translated_text"] = ""
-            elif not isinstance(back_translated, str):
-                raise HTTPException(status_code=500, detail="back_translated_text must be a string")
-            else:
-                item["back_translated_text"] = back_translated
+            for item in results:
+                if not isinstance(item, dict):
+                    raise HTTPException(status_code=500, detail="Each translation result must be an object")
+                if not item.get("id") or not item.get("translated_text") or not isinstance(item.get("translated_text"), str):
+                    raise HTTPException(status_code=500, detail="Each translation result must include id and translated_text")
+                back_translated = item.get("back_translated_text")
+                if back_translated is None:
+                    item["back_translated_text"] = ""
+                elif not isinstance(back_translated, str):
+                    raise HTTPException(status_code=500, detail="back_translated_text must be a string")
+                else:
+                    item["back_translated_text"] = back_translated
 
-        returned_ids = {item["id"] for item in results}
-        missing_ids = [message_id for message_id in request.message_ids_to_translate if message_id not in returned_ids]
-        if missing_ids:
-            raise HTTPException(status_code=500, detail=f"Missing translated ids: {missing_ids}")
+            returned_ids = {item["id"] for item in results}
+            missing_ids = [message_id for message_id in request.message_ids_to_translate if message_id not in returned_ids]
+            if missing_ids:
+                raise HTTPException(status_code=500, detail=f"Missing translated ids: {missing_ids}")
 
-        return {"results": results}
+            return {"results": results}
+        else:
+            results = [
+                {
+                    "id": message_id,
+                    "translated_text": fallback_text,
+                    "source_language": "",
+                    "back_translated_text": "",
+                }
+                for message_id in request.message_ids_to_translate
+            ]
+            return {"results": results}
     except HTTPException:
         raise
     except json.JSONDecodeError:

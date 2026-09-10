@@ -159,7 +159,7 @@ def test_translate_handles_markdown_code_fences():
 def test_translate_rejects_invalid_json_when_target_language_provided():
     mocked_response = Mock()
     mocked_response.json.return_value = {
-        "choices": [{"message": {"content": "not-valid-json"}}]
+        "choices": [{"message": {"content": "{not-valid-json"}}]
     }
 
     with patch("app.requests.post", return_value=mocked_response):
@@ -332,3 +332,34 @@ def test_translate_rejects_non_string_back_translation():
         )
 
     assert response.status_code == 500
+
+
+def test_translate_plain_text_content_fallback_with_target_language_and_model():
+    mocked_response = Mock()
+    mocked_response.json.return_value = {
+        "choices": [
+            {
+                "message": {
+                    "content": "Hello"
+                }
+            }
+        ]
+    }
+
+    with patch("app.requests.post", return_value=mocked_response):
+        response = client.post(
+            "/translate",
+            headers={"x-api-key": "test-key"},
+            json={
+                "text": "Xin chào",
+                "target_language": "English",
+                "model": "gemini-3.8-flash-high",
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "result": "Hello",
+        "source_language": "",
+        "back_translated_text": "",
+    }

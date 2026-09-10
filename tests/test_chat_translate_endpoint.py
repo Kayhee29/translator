@@ -161,7 +161,7 @@ def test_chat_translate_accepts_out_of_order_upstream_results_but_preserves_id_m
 def test_chat_translate_rejects_invalid_json_from_upstream():
     mocked_response = Mock()
     mocked_response.json.return_value = {
-        "choices": [{"message": {"content": "not-json"}}]
+        "choices": [{"message": {"content": "{not-json"}}]
     }
 
     with patch("app.requests.post", return_value=mocked_response):
@@ -512,3 +512,41 @@ def test_chat_translate_rejects_missing_translated_text():
         )
 
     assert response.status_code == 500
+
+
+def test_chat_translate_plain_text_content_fallback():
+    mocked_response = Mock()
+    mocked_response.json.return_value = {
+        "choices": [
+            {
+                "message": {
+                    "content": "Hello"
+                }
+            }
+        ]
+    }
+
+    with patch("app.requests.post", return_value=mocked_response):
+        response = client.post(
+            "/chat_translate",
+            headers={"x-api-key": "test-key"},
+            json={
+                "target_language": "English",
+                "model": "gemini-3.8-flash-high",
+                "verify_back_translation": True,
+                "messages": [{"id": "m1", "role": "role_a", "content": "Xin chào"}],
+                "message_ids_to_translate": ["m1"],
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "results": [
+            {
+                "id": "m1",
+                "translated_text": "Hello",
+                "source_language": "",
+                "back_translated_text": "",
+            }
+        ]
+    }
