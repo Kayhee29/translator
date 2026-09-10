@@ -117,6 +117,12 @@
                         <div id="outputText"
                             class="text-sm md:text-base font-bold text-white leading-relaxed min-h-[40px] max-h-[200px] overflow-y-auto custom-scrollbar">
                         </div>
+                        <div id="quickBackTranslateWrap" class="hidden mt-3 pt-3 border-t border-white/20 bg-emerald-500/20 -mx-2 px-3 py-2 rounded-xl text-emerald-100">
+                            <div class="text-[10px] uppercase tracking-wide font-bold text-emerald-200 flex items-center gap-1 mb-0.5">
+                                <i class="fas fa-shield-alt"></i> Dịch ngược để verify
+                            </div>
+                            <div id="quickBackTranslateText" class="text-sm font-medium whitespace-pre-wrap"></div>
+                        </div>
                         <div class="mt-3 md:mt-4 flex justify-end gap-2">
                             <button onclick="copy('outputText')"
                                 class="bg-white/20 hover:bg-white/30 text-white px-4 py-2 rounded-xl transition text-sm">
@@ -170,8 +176,17 @@
                             <div id="outgoingPreviewWrap" class="hidden flex justify-end">
                                 <div class="max-w-[85%] rounded-2xl bg-blue-600 border border-blue-500 text-white px-4 py-3 shadow-sm">
                                     <div id="outgoingPreviewStatus" class="text-[10px] uppercase tracking-wide font-bold text-white/60 mb-1"></div>
-                                    <div id="outgoingPreviewText" class="text-sm font-semibold whitespace-pre-wrap"></div>
-                                    <div id="outgoingPreviewSource" class="hidden mt-2 pt-2 border-t border-white/20 text-xs text-white/70 whitespace-pre-wrap"></div>
+                                    <div id="outgoingPreviewSource" class="text-sm whitespace-pre-wrap"></div>
+                                    <div id="outgoingPreviewPrimaryWrap" class="mt-2 pt-2 border-t border-white/20">
+                                        <div class="text-[10px] uppercase tracking-wide font-bold text-white/60 mb-0.5"><i class="fas fa-check-circle mr-1"></i> Bản dịch</div>
+                                        <div id="outgoingPreviewText" class="text-sm font-semibold whitespace-pre-wrap"></div>
+                                    </div>
+                                    <div id="outgoingPreviewVerifyWrap" class="hidden mt-2 pt-2 border-t border-white/20 bg-emerald-500/20 -mx-2 px-2 py-1.5 rounded-xl text-emerald-100">
+                                        <div class="text-[10px] uppercase tracking-wide font-bold text-emerald-200 flex items-center gap-1 mb-0.5">
+                                            <i class="fas fa-shield-alt"></i> Dịch ngược để verify
+                                        </div>
+                                        <div id="outgoingPreviewVerifyText" class="text-sm font-medium whitespace-pre-wrap"></div>
+                                    </div>
                                 </div>
                             </div>
                             <div class="flex justify-end">
@@ -221,6 +236,7 @@
 
     <script>
         let timeout = null;
+        let quickRequestId = 0;
         let outgoingPreviewTimeout = null;
         let outgoingPreviewRequestId = 0;
 
@@ -231,6 +247,8 @@
             quick: {
                 input: "",
                 output: "",
+                sourceLanguage: "",
+                backTranslatedText: "",
             },
             chat: {
                 targetLanguage: "Vietnamese",
@@ -243,11 +261,42 @@
                 outgoingPreview: {
                     source: "",
                     translatedText: "",
+                    sourceLanguage: "",
+                    backTranslatedText: "",
                     status: "idle",
                     error: "",
                 },
             }
         };
+
+        function escapeHtml(str) {
+            if (!str) return "";
+            return String(str)
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+
+        function renderQuickVerify() {
+            const wrap = document.getElementById("quickBackTranslateWrap");
+            const textEl = document.getElementById("quickBackTranslateText");
+            if (!wrap || !textEl) return;
+            if (appState.quick.backTranslatedText) {
+                textEl.innerText = appState.quick.backTranslatedText;
+                wrap.classList.remove("hidden");
+            } else {
+                textEl.innerText = "";
+                wrap.classList.add("hidden");
+            }
+        }
+
+        function clearQuickBackTranslate() {
+            appState.quick.sourceLanguage = "";
+            appState.quick.backTranslatedText = "";
+            renderQuickVerify();
+        }
 
         const defaultTranslationSettings = {
             targetLanguage: "Vietnamese",
@@ -467,26 +516,54 @@
             const text = e.target.value.trim();
             appState.quick.input = text;
             if (!text) { 
+                quickRequestId++;
                 document.getElementById('outputText').innerText = ""; 
                 appState.quick.output = "";
+                clearQuickBackTranslate();
                 return; 
             }
 
             timeout = setTimeout(async () => {
-                const key = document.getElementById('apiKey').value;
+                const reqId = ++quickRequestId;
+                const key = document.getElementById('apiKey').value.trim();
                 if (!key || !appState.translationEnabled) return;
                 document.getElementById('loading').classList.remove('hidden');
 
-                const response = await fetch(basePath + 'translate', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'x-api-key': key },
-                    body: JSON.stringify({ text: text })
-                });
-                const data = await response.json();
-                document.getElementById('outputText').innerText = data.result;
-                appState.quick.output = data.result || "";
-                document.getElementById('loading').classList.add('hidden');
-                loadHistory(); 
+                const opts = getTranslationOptions();
+                const payload = {
+                    text: text,
+                    target_language: opts.target_language,
+                    model: opts.model,
+                    verify_back_translation: opts.verify_back_translation,
+                };
+
+                try {
+                    const response = await fetch(basePath + 'translate', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'x-api-key': key },
+                        body: JSON.stringify(payload)
+                    });
+                    const data = await response.json();
+                    if (reqId !== quickRequestId) return;
+                    if (!response.ok) {
+                        throw new Error(data.detail || "Lỗi dịch");
+                    }
+                    document.getElementById('outputText').innerText = data.result || "";
+                    appState.quick.output = data.result || "";
+                    appState.quick.sourceLanguage = data.source_language || "";
+                    appState.quick.backTranslatedText = data.back_translated_text || "";
+                    renderQuickVerify();
+                    loadHistory();
+                } catch (err) {
+                    if (reqId !== quickRequestId) return;
+                    document.getElementById('outputText').innerText = err.message || "Lỗi dịch";
+                    appState.quick.output = "";
+                    clearQuickBackTranslate();
+                } finally {
+                    if (reqId === quickRequestId) {
+                        document.getElementById('loading').classList.add('hidden');
+                    }
+                }
             }, 800);
         });
 
@@ -508,10 +585,12 @@
         }
 
         function clearText() {
+            quickRequestId++;
             document.getElementById('inputText').value = '';
             document.getElementById('outputText').innerText = '';
             appState.quick.input = "";
             appState.quick.output = "";
+            clearQuickBackTranslate();
             clearTimeout(timeout);
         }
 
@@ -520,7 +599,15 @@
         }
 
         // Chat Translate Message Factory
-        function createChatMessage({ direction, content, translatedText = "", status = "idle", error = "" }) {
+        function createChatMessage({
+            direction,
+            content,
+            translatedText = "",
+            sourceLanguage = "",
+            backTranslatedText = "",
+            status = "idle",
+            error = "",
+        }) {
             const id = `m${appState.chat.nextMessageId++}`;
             return {
                 id,
@@ -528,6 +615,8 @@
                 direction,
                 content,
                 translatedText,
+                sourceLanguage,
+                backTranslatedText,
                 status,
                 error,
             };
@@ -551,11 +640,19 @@
                 return `
                     <div class="flex ${isIncoming ? "justify-start" : "justify-end"}">
                         <div class="max-w-[85%] rounded-2xl px-4 py-3 shadow-sm border ${isIncoming ? "bg-white border-gray-200 text-gray-700" : "bg-blue-600 border-blue-500 text-white"}">
-                            <div class="text-sm whitespace-pre-wrap">${message.content}</div>
+                            <div class="text-sm whitespace-pre-wrap">${escapeHtml(message.content)}</div>
                             ${message.translatedText ? `
                                 <div class="mt-2 pt-2 border-t ${isIncoming ? "border-gray-100 text-gray-500 italic" : "border-white/20 text-white/90"}">
                                     <div class="text-[10px] uppercase tracking-wide font-bold ${isIncoming ? "text-gray-400" : "text-white/60"}"><i class="fas fa-check-circle mr-1"></i> Bản dịch</div>
-                                    <div class="text-sm ${isIncoming ? "font-normal" : "font-semibold"} whitespace-pre-wrap">${message.translatedText}</div>
+                                    <div class="text-sm ${isIncoming ? "font-normal" : "font-semibold"} whitespace-pre-wrap">${escapeHtml(message.translatedText)}</div>
+                                </div>
+                            ` : ""}
+                            ${message.backTranslatedText ? `
+                                <div class="mt-2 pt-2 border-t ${isIncoming ? "border-emerald-100 bg-emerald-50 text-emerald-800" : "border-white/20 bg-emerald-500/20 text-emerald-100"} -mx-2 px-2 py-1.5 rounded-xl">
+                                    <div class="text-[10px] uppercase tracking-wide font-bold ${isIncoming ? "text-emerald-600" : "text-emerald-200"} flex items-center gap-1 mb-0.5">
+                                        <i class="fas fa-shield-alt"></i> Dịch ngược để verify
+                                    </div>
+                                    <div class="text-sm font-medium whitespace-pre-wrap">${escapeHtml(message.backTranslatedText)}</div>
                                 </div>
                             ` : ""}
                             ${!message.translatedText && message.status === "translating" ? `
@@ -563,7 +660,7 @@
                                     <i class="fas fa-spinner animate-spin mr-1"></i> Đang dịch...
                                 </div>
                             ` : ""}
-                            ${message.error ? `<div class="mt-2 text-xs text-red-200 border-t border-white/10 pt-2"><i class="fas fa-exclamation-circle"></i> Lỗi: ${message.error}</div>` : ""}
+                            ${message.error ? `<div class="mt-2 text-xs text-red-200 border-t border-white/10 pt-2"><i class="fas fa-exclamation-circle"></i> Lỗi: ${escapeHtml(message.error)}</div>` : ""}
                         </div>
                     </div>
                 `;
@@ -612,8 +709,11 @@
             input.value = "";
             renderChatTimeline();
 
+            const opts = getTranslationOptions();
             const payload = {
-                target_language: getSelectedTargetLanguage(),
+                target_language: opts.target_language,
+                model: opts.model,
+                verify_back_translation: opts.verify_back_translation,
                 messages: appState.chat.messages.map((message) => ({
                     id: message.id,
                     role: message.role,
@@ -642,11 +742,16 @@
                 }
 
                 incomingMessage.translatedText = translated.translated_text || "";
+                incomingMessage.sourceLanguage = translated.source_language || "";
+                incomingMessage.backTranslatedText = translated.back_translated_text || "";
                 incomingMessage.status = "translated";
                 incomingMessage.error = "";
             } catch (error) {
                 incomingMessage.status = "error";
                 incomingMessage.error = error.message;
+                incomingMessage.translatedText = "";
+                incomingMessage.sourceLanguage = "";
+                incomingMessage.backTranslatedText = "";
                 setChatError(error.message);
             }
 
@@ -673,6 +778,7 @@
 
         // Build Payload
         function getChatPayloadWithOutgoingDraft(outgoingContent) {
+            const opts = getTranslationOptions();
             const baseMessages = appState.chat.messages.map((message) => ({
                 id: message.id,
                 role: message.role,
@@ -688,7 +794,9 @@
             return {
                 draftMessage: outgoingDraft,
                 payload: {
-                    target_language: document.getElementById("chatTargetLanguage").value,
+                    target_language: opts.target_language,
+                    model: opts.model,
+                    verify_back_translation: opts.verify_back_translation,
                     messages: [
                         ...baseMessages,
                         {
@@ -709,8 +817,11 @@
             const preview = appState.chat.outgoingPreview;
             const wrap = document.getElementById("outgoingPreviewWrap");
             const status = document.getElementById("outgoingPreviewStatus");
+            const primaryWrap = document.getElementById("outgoingPreviewPrimaryWrap");
             const text = document.getElementById("outgoingPreviewText");
             const source = document.getElementById("outgoingPreviewSource");
+            const verifyWrap = document.getElementById("outgoingPreviewVerifyWrap");
+            const verifyText = document.getElementById("outgoingPreviewVerifyText");
 
             if (!preview.source && !preview.translatedText && preview.status !== "translating") {
                 wrap.classList.add("hidden");
@@ -718,26 +829,42 @@
             }
 
             wrap.classList.remove("hidden");
-            source.textContent = preview.source ? `Ban goc: ${preview.source}` : "";
+            source.textContent = preview.source || "";
             source.classList.toggle("hidden", !preview.source);
 
             if (preview.status === "translating") {
                 status.innerHTML = '<i class="fas fa-spinner animate-spin mr-1"></i> Đang dịch';
+                if (primaryWrap) primaryWrap.classList.remove("hidden");
                 text.textContent = "Đang tạo bản dịch theo ngữ cảnh...";
+                if (verifyWrap) verifyWrap.classList.add("hidden");
+                if (verifyText) verifyText.textContent = "";
                 return;
             }
 
             if (preview.status === "error") {
                 status.innerHTML = '<i class="fas fa-exclamation-circle mr-1"></i> Lỗi dịch';
+                if (primaryWrap) primaryWrap.classList.remove("hidden");
                 text.textContent = preview.error || "Không thể dịch bản nháp.";
+                if (verifyWrap) verifyWrap.classList.add("hidden");
+                if (verifyText) verifyText.textContent = "";
                 return;
             }
 
             status.innerHTML = '<i class="fas fa-check-circle mr-1"></i> Bản dịch';
-            text.textContent = preview.translatedText || "Bản dịch se hien o day...";
+            if (primaryWrap) primaryWrap.classList.remove("hidden");
+            text.textContent = preview.translatedText || "Bản dịch sẽ hiện ở đây...";
+
+            if (preview.backTranslatedText) {
+                if (verifyWrap) verifyWrap.classList.remove("hidden");
+                if (verifyText) verifyText.textContent = preview.backTranslatedText;
+            } else {
+                if (verifyWrap) verifyWrap.classList.add("hidden");
+                if (verifyText) verifyText.textContent = "";
+            }
         }
 
         function getOutgoingPreviewPayload(outgoingContent) {
+            const opts = getTranslationOptions();
             const baseMessages = appState.chat.messages.map((message) => ({
                 id: message.id,
                 role: message.role,
@@ -750,7 +877,9 @@
             };
 
             return {
-                target_language: getSelectedTargetLanguage(),
+                target_language: opts.target_language,
+                model: opts.model,
+                verify_back_translation: opts.verify_back_translation,
                 messages: [...baseMessages, draftMessage],
                 message_ids_to_translate: [...baseMessages.map((message) => message.id), draftMessage.id],
             };
@@ -767,6 +896,8 @@
                 appState.chat.outgoingPreview.status = outgoingContent ? "error" : "idle";
                 appState.chat.outgoingPreview.error = outgoingContent ? "Vui lòng nhập API Key." : "";
                 appState.chat.outgoingPreview.translatedText = "";
+                appState.chat.outgoingPreview.sourceLanguage = "";
+                appState.chat.outgoingPreview.backTranslatedText = "";
                 renderOutgoingPreview();
                 return;
             }
@@ -775,6 +906,8 @@
                 appState.chat.outgoingPreview.status = outgoingContent ? "error" : "idle";
                 appState.chat.outgoingPreview.error = outgoingContent ? "Vui lòng đợi kết nối model thành công trước khi dịch." : "";
                 appState.chat.outgoingPreview.translatedText = "";
+                appState.chat.outgoingPreview.sourceLanguage = "";
+                appState.chat.outgoingPreview.backTranslatedText = "";
                 renderOutgoingPreview();
                 return;
             }
@@ -783,6 +916,8 @@
                 appState.chat.outgoingPreview = {
                     source: "",
                     translatedText: "",
+                    sourceLanguage: "",
+                    backTranslatedText: "",
                     status: "idle",
                     error: "",
                 };
@@ -795,6 +930,8 @@
             appState.chat.outgoingPreview.status = "translating";
             appState.chat.outgoingPreview.error = "";
             appState.chat.outgoingPreview.translatedText = "";
+            appState.chat.outgoingPreview.sourceLanguage = "";
+            appState.chat.outgoingPreview.backTranslatedText = "";
             renderOutgoingPreview();
 
             try {
@@ -819,6 +956,8 @@
                 }
 
                 appState.chat.outgoingPreview.translatedText = translated.translated_text || "";
+                appState.chat.outgoingPreview.sourceLanguage = translated.source_language || "";
+                appState.chat.outgoingPreview.backTranslatedText = translated.back_translated_text || "";
                 appState.chat.outgoingPreview.status = "translated";
                 appState.chat.outgoingPreview.error = "";
             } catch (error) {
@@ -826,13 +965,29 @@
                 appState.chat.outgoingPreview.status = "error";
                 appState.chat.outgoingPreview.error = error.message;
                 appState.chat.outgoingPreview.translatedText = "";
+                appState.chat.outgoingPreview.sourceLanguage = "";
+                appState.chat.outgoingPreview.backTranslatedText = "";
             }
 
             renderOutgoingPreview();
         }
 
-        document.getElementById("outgoingMessageInput").addEventListener("input", () => {
+        document.getElementById("outgoingMessageInput").addEventListener("input", (e) => {
             clearTimeout(outgoingPreviewTimeout);
+            const content = e.target.value.trim();
+            if (!content) {
+                outgoingPreviewRequestId++;
+                appState.chat.outgoingPreview = {
+                    source: "",
+                    translatedText: "",
+                    sourceLanguage: "",
+                    backTranslatedText: "",
+                    status: "idle",
+                    error: "",
+                };
+                renderOutgoingPreview();
+                return;
+            }
             outgoingPreviewTimeout = setTimeout(translateOutgoingPreview, 500);
         });
 
@@ -870,13 +1025,18 @@
                     direction: "outgoing",
                     content: source,
                     translatedText: preview.translatedText,
+                    sourceLanguage: preview.sourceLanguage || "",
+                    backTranslatedText: preview.backTranslatedText || "",
                     status: "translated",
                 })
             );
             outgoingInput.value = "";
+            outgoingPreviewRequestId++;
             appState.chat.outgoingPreview = {
                 source: "",
                 translatedText: "",
+                sourceLanguage: "",
+                backTranslatedText: "",
                 status: "idle",
                 error: "",
             };
@@ -887,10 +1047,13 @@
 
         // Clear Chat action
         document.getElementById("clearChatBtn").addEventListener("click", () => {
+            outgoingPreviewRequestId++;
             appState.chat.messages = [];
             appState.chat.outgoingPreview = {
                 source: "",
                 translatedText: "",
+                sourceLanguage: "",
+                backTranslatedText: "",
                 status: "idle",
                 error: "",
             };
@@ -901,39 +1064,45 @@
             renderChatTimeline();
         });
 
+        function handleSettingsChange(immediatePreview = false) {
+            saveTranslationSettings();
+            clearQuickBackTranslate();
+            outgoingPreviewRequestId++;
+            appState.chat.outgoingPreview.sourceLanguage = "";
+            appState.chat.outgoingPreview.backTranslatedText = "";
+
+            if (document.getElementById("inputText").value.trim() && appState.translationEnabled) {
+                clearTimeout(timeout);
+                timeout = setTimeout(() => {
+                    document.getElementById("inputText").dispatchEvent(new Event("input"));
+                }, 100);
+            }
+
+            if (document.getElementById("outgoingMessageInput").value.trim()) {
+                clearTimeout(outgoingPreviewTimeout);
+                outgoingPreviewTimeout = setTimeout(translateOutgoingPreview, immediatePreview ? 100 : 500);
+            } else {
+                renderOutgoingPreview();
+            }
+        }
+
         // Shared Settings Event Listeners
         document.getElementById("translationTargetLanguage").addEventListener("change", (e) => {
             const isCustom = e.target.value === "custom";
             document.getElementById("customTargetLanguage").classList.toggle("hidden", !isCustom);
-            saveTranslationSettings();
-            if (document.getElementById("outgoingMessageInput").value.trim()) {
-                clearTimeout(outgoingPreviewTimeout);
-                outgoingPreviewTimeout = setTimeout(translateOutgoingPreview, 100);
-            }
+            handleSettingsChange(true);
         });
 
         document.getElementById("customTargetLanguage").addEventListener("input", () => {
-            saveTranslationSettings();
-            if (document.getElementById("outgoingMessageInput").value.trim()) {
-                clearTimeout(outgoingPreviewTimeout);
-                outgoingPreviewTimeout = setTimeout(translateOutgoingPreview, 500);
-            }
+            handleSettingsChange(false);
         });
 
         document.getElementById("translationModel").addEventListener("change", () => {
-            saveTranslationSettings();
-            if (document.getElementById("outgoingMessageInput").value.trim()) {
-                clearTimeout(outgoingPreviewTimeout);
-                outgoingPreviewTimeout = setTimeout(translateOutgoingPreview, 100);
-            }
+            handleSettingsChange(true);
         });
 
         document.getElementById("verifyBackTranslation").addEventListener("change", () => {
-            saveTranslationSettings();
-            if (document.getElementById("outgoingMessageInput").value.trim()) {
-                clearTimeout(outgoingPreviewTimeout);
-                outgoingPreviewTimeout = setTimeout(translateOutgoingPreview, 100);
-            }
+            handleSettingsChange(true);
         });
 
         document.getElementById("refreshModelsBtn").addEventListener("click", () => {
