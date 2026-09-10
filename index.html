@@ -47,6 +47,51 @@
                 </div>
             </div>
 
+            <!-- Shared Translation Settings Card -->
+            <div class="bg-white p-4 rounded-2xl shadow-sm border space-y-3">
+                <div class="flex flex-wrap items-center justify-between gap-2 border-b pb-2.5">
+                    <div class="text-xs font-bold uppercase tracking-wider text-gray-500 flex items-center gap-1.5">
+                        <i class="fas fa-sliders-h text-blue-500"></i> Cấu hình dịch
+                    </div>
+                    <div id="modelStatus" class="text-xs font-medium text-gray-500 flex items-center gap-1">
+                        <span class="text-gray-400">Vui lòng nhập API Key</span>
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div class="space-y-1">
+                        <label class="text-xs font-semibold text-gray-600 block">Ngôn ngữ đích</label>
+                        <select id="translationTargetLanguage" class="w-full rounded-xl border px-3 py-2 text-sm outline-none bg-gray-50 font-medium text-gray-700 cursor-pointer focus:border-blue-400">
+                            <option value="Vietnamese">Vietnamese</option>
+                            <option value="English">English</option>
+                            <option value="Chinese">Chinese</option>
+                            <option value="Japanese">Japanese</option>
+                            <option value="Korean">Korean</option>
+                            <option value="custom">Tùy chỉnh...</option>
+                        </select>
+                        <input type="text" id="customTargetLanguage" placeholder="Nhập ngôn ngữ đích tùy chỉnh..."
+                            class="hidden w-full mt-1.5 rounded-xl border px-3 py-1.5 text-sm outline-none bg-gray-50 focus:border-blue-400">
+                    </div>
+                    <div class="space-y-1">
+                        <div class="flex items-center justify-between">
+                            <label class="text-xs font-semibold text-gray-600">Model AI</label>
+                            <button id="refreshModelsBtn" type="button" title="Tải lại danh sách model"
+                                class="text-xs text-blue-600 hover:text-blue-800 font-semibold flex items-center gap-1">
+                                <i class="fas fa-sync-alt"></i> Làm mới
+                            </button>
+                        </div>
+                        <select id="translationModel" class="w-full rounded-xl border px-3 py-2 text-sm outline-none bg-gray-50 font-medium text-gray-700 cursor-pointer focus:border-blue-400 disabled:opacity-50 disabled:cursor-not-allowed">
+                            <option value="">Chưa có model</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="pt-1 flex items-center justify-between">
+                    <label class="inline-flex items-center gap-2 cursor-pointer select-none">
+                        <input type="checkbox" id="verifyBackTranslation" class="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 cursor-pointer">
+                        <span class="text-xs font-semibold text-gray-700">Dịch ngược để verify (Khi nguồn là Tiếng Việt)</span>
+                    </label>
+                </div>
+            </div>
+
             <!-- Quick Translate Panel -->
             <div id="quickPanel" class="space-y-4">
                 <div
@@ -91,14 +136,6 @@
                             <div class="text-xs text-gray-400">Mô phỏng màn hình chat để dịch theo ngữ cảnh.</div>
                         </div>
                         <div class="flex items-center gap-2">
-                            <span class="text-xs font-bold text-gray-400">Target:</span>
-                            <select id="chatTargetLanguage" class="rounded-xl border px-3 py-2 text-sm outline-none bg-gray-50 font-semibold text-gray-700 cursor-pointer">
-                                <option>Vietnamese</option>
-                                <option>English</option>
-                                <option>Chinese</option>
-                                <option>Japanese</option>
-                                <option>Korean</option>
-                            </select>
                             <button id="clearChatBtn" class="px-3 py-2 rounded-xl bg-red-50 hover:bg-red-100 text-red-600 text-xs font-bold transition">Xóa hội thoại</button>
                         </div>
                     </div>
@@ -190,6 +227,7 @@
         // State Management
         const appState = {
             mode: "quick",
+            translationEnabled: false,
             quick: {
                 input: "",
                 output: "",
@@ -210,6 +248,157 @@
                 },
             }
         };
+
+        const defaultTranslationSettings = {
+            targetLanguage: "Vietnamese",
+            customTargetLanguage: "",
+            model: "",
+            verifyBackTranslation: false,
+        };
+
+        function loadTranslationSettings() {
+            try {
+                const raw = localStorage.getItem("translationSettings");
+                if (!raw) return { ...defaultTranslationSettings };
+                const parsed = JSON.parse(raw);
+                if (!parsed || typeof parsed !== "object") return { ...defaultTranslationSettings };
+                return {
+                    targetLanguage: typeof parsed.targetLanguage === "string" ? parsed.targetLanguage : defaultTranslationSettings.targetLanguage,
+                    customTargetLanguage: typeof parsed.customTargetLanguage === "string" ? parsed.customTargetLanguage : defaultTranslationSettings.customTargetLanguage,
+                    model: typeof parsed.model === "string" ? parsed.model : defaultTranslationSettings.model,
+                    verifyBackTranslation: Boolean(parsed.verifyBackTranslation),
+                };
+            } catch (e) {
+                return { ...defaultTranslationSettings };
+            }
+        }
+
+        function saveTranslationSettings() {
+            const targetSelect = document.getElementById("translationTargetLanguage");
+            const customInput = document.getElementById("customTargetLanguage");
+            const modelSelect = document.getElementById("translationModel");
+            const verifyCheckbox = document.getElementById("verifyBackTranslation");
+
+            const settings = {
+                targetLanguage: targetSelect ? targetSelect.value : defaultTranslationSettings.targetLanguage,
+                customTargetLanguage: customInput ? customInput.value.trim() : "",
+                model: modelSelect ? modelSelect.value : "",
+                verifyBackTranslation: verifyCheckbox ? verifyCheckbox.checked : false,
+            };
+            try {
+                localStorage.setItem("translationSettings", JSON.stringify(settings));
+            } catch (e) {}
+        }
+
+        function getSelectedTargetLanguage() {
+            const targetSelect = document.getElementById("translationTargetLanguage");
+            const customInput = document.getElementById("customTargetLanguage");
+            if (targetSelect && targetSelect.value === "custom") {
+                return (customInput ? customInput.value.trim() : "") || "Vietnamese";
+            }
+            return targetSelect ? targetSelect.value : "Vietnamese";
+        }
+
+        function getTranslationOptions() {
+            const modelSelect = document.getElementById("translationModel");
+            const verifyCheckbox = document.getElementById("verifyBackTranslation");
+            return {
+                target_language: getSelectedTargetLanguage(),
+                model: modelSelect ? modelSelect.value : "",
+                verify_back_translation: verifyCheckbox ? verifyCheckbox.checked : false,
+            };
+        }
+
+        function setTranslationEnabled(enabled) {
+            appState.translationEnabled = enabled;
+            const appendBtn = document.getElementById("appendIncomingBtn");
+            const outgoingBtn = document.getElementById("translateOutgoingBtn");
+            [appendBtn, outgoingBtn].forEach((btn) => {
+                if (btn) {
+                    btn.disabled = !enabled;
+                    btn.classList.toggle("opacity-50", !enabled);
+                    btn.classList.toggle("cursor-not-allowed", !enabled);
+                }
+            });
+        }
+
+        async function loadModels() {
+            const key = document.getElementById("apiKey").value.trim();
+            const modelStatus = document.getElementById("modelStatus");
+            const modelSelect = document.getElementById("translationModel");
+
+            if (!key) {
+                modelStatus.innerHTML = '<span class="text-gray-400">Vui lòng nhập API Key</span>';
+                modelSelect.innerHTML = '<option value="">Chưa có model</option>';
+                setTranslationEnabled(false);
+                return;
+            }
+
+            modelStatus.innerHTML = '<span class="text-blue-600 flex items-center gap-1"><i class="fas fa-spinner animate-spin"></i> Đang tải model...</span>';
+            setTranslationEnabled(false);
+
+            try {
+                const response = await fetch(basePath + "models", {
+                    headers: {
+                        "x-api-key": key,
+                    },
+                });
+                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data.detail || "Không thể tải danh sách model.");
+                }
+
+                const models = data.models || [];
+                if (!models.length) {
+                    throw new Error("Không tìm thấy model nào từ endpoint.");
+                }
+
+                modelSelect.innerHTML = "";
+                models.forEach((m) => {
+                    const opt = document.createElement("option");
+                    opt.value = m.id;
+                    opt.textContent = m.name || m.id;
+                    modelSelect.appendChild(opt);
+                });
+
+                const cached = loadTranslationSettings();
+                if (cached.model && models.some((m) => m.id === cached.model)) {
+                    modelSelect.value = cached.model;
+                } else {
+                    modelSelect.value = models[0].id;
+                }
+
+                modelStatus.innerHTML = '<span class="text-green-600 flex items-center gap-1"><i class="fas fa-check-circle"></i> Đã kết nối</span>';
+                setTranslationEnabled(true);
+                saveTranslationSettings();
+
+                if (document.getElementById("outgoingMessageInput").value.trim()) {
+                    translateOutgoingPreview();
+                }
+            } catch (err) {
+                modelSelect.innerHTML = '<option value="">Chưa có model</option>';
+                modelStatus.innerHTML = `<span class="text-red-500 flex items-center gap-1" title="${err.message}"><i class="fas fa-exclamation-circle"></i> ${err.message}</span>`;
+                setTranslationEnabled(false);
+            }
+        }
+
+        function applyLoadedSettings() {
+            const settings = loadTranslationSettings();
+            const targetSelect = document.getElementById("translationTargetLanguage");
+            const customInput = document.getElementById("customTargetLanguage");
+            const verifyCheckbox = document.getElementById("verifyBackTranslation");
+
+            if (targetSelect) {
+                targetSelect.value = settings.targetLanguage;
+            }
+            if (customInput) {
+                customInput.value = settings.customTargetLanguage || "";
+                customInput.classList.toggle("hidden", settings.targetLanguage !== "custom");
+            }
+            if (verifyCheckbox) {
+                verifyCheckbox.checked = settings.verifyBackTranslation;
+            }
+        }
 
         // Tự động nhận diện Subpath, loại bỏ 'index.html' nếu có trên URL
         let basePath = window.location.pathname;
@@ -285,7 +474,7 @@
 
             timeout = setTimeout(async () => {
                 const key = document.getElementById('apiKey').value;
-                if (!key) return;
+                if (!key || !appState.translationEnabled) return;
                 document.getElementById('loading').classList.remove('hidden');
 
                 const response = await fetch(basePath + 'translate', {
@@ -403,6 +592,11 @@
                 return;
             }
 
+            if (!appState.translationEnabled) {
+                setChatError("Vui lòng đợi kết nối model thành công trước khi dịch.");
+                return;
+            }
+
             if (!content) {
                 setChatError("Chưa có tin nhắn đối phương.");
                 return;
@@ -419,7 +613,7 @@
             renderChatTimeline();
 
             const payload = {
-                target_language: document.getElementById("chatTargetLanguage").value,
+                target_language: getSelectedTargetLanguage(),
                 messages: appState.chat.messages.map((message) => ({
                     id: message.id,
                     role: message.role,
@@ -556,7 +750,7 @@
             };
 
             return {
-                target_language: document.getElementById("chatTargetLanguage").value,
+                target_language: getSelectedTargetLanguage(),
                 messages: [...baseMessages, draftMessage],
                 message_ids_to_translate: [...baseMessages.map((message) => message.id), draftMessage.id],
             };
@@ -572,6 +766,14 @@
             if (!key) {
                 appState.chat.outgoingPreview.status = outgoingContent ? "error" : "idle";
                 appState.chat.outgoingPreview.error = outgoingContent ? "Vui lòng nhập API Key." : "";
+                appState.chat.outgoingPreview.translatedText = "";
+                renderOutgoingPreview();
+                return;
+            }
+
+            if (!appState.translationEnabled) {
+                appState.chat.outgoingPreview.status = outgoingContent ? "error" : "idle";
+                appState.chat.outgoingPreview.error = outgoingContent ? "Vui lòng đợi kết nối model thành công trước khi dịch." : "";
                 appState.chat.outgoingPreview.translatedText = "";
                 renderOutgoingPreview();
                 return;
@@ -648,6 +850,11 @@
             const source = outgoingInput.value.trim();
             const preview = appState.chat.outgoingPreview;
 
+            if (!appState.translationEnabled) {
+                setChatError("Vui lòng đợi kết nối model thành công trước khi thêm vào chat.");
+                return;
+            }
+
             if (!source) {
                 setChatError("Chưa có tin nhắn của bạn.");
                 return;
@@ -694,23 +901,66 @@
             renderChatTimeline();
         });
 
-        // State Synchronization
-        document.getElementById("chatTargetLanguage").addEventListener("change", (event) => {
-            appState.chat.targetLanguage = event.target.value;
+        // Shared Settings Event Listeners
+        document.getElementById("translationTargetLanguage").addEventListener("change", (e) => {
+            const isCustom = e.target.value === "custom";
+            document.getElementById("customTargetLanguage").classList.toggle("hidden", !isCustom);
+            saveTranslationSettings();
             if (document.getElementById("outgoingMessageInput").value.trim()) {
                 clearTimeout(outgoingPreviewTimeout);
                 outgoingPreviewTimeout = setTimeout(translateOutgoingPreview, 100);
             }
         });
 
-        // Handle API Key Persistence
+        document.getElementById("customTargetLanguage").addEventListener("input", () => {
+            saveTranslationSettings();
+            if (document.getElementById("outgoingMessageInput").value.trim()) {
+                clearTimeout(outgoingPreviewTimeout);
+                outgoingPreviewTimeout = setTimeout(translateOutgoingPreview, 500);
+            }
+        });
+
+        document.getElementById("translationModel").addEventListener("change", () => {
+            saveTranslationSettings();
+            if (document.getElementById("outgoingMessageInput").value.trim()) {
+                clearTimeout(outgoingPreviewTimeout);
+                outgoingPreviewTimeout = setTimeout(translateOutgoingPreview, 100);
+            }
+        });
+
+        document.getElementById("verifyBackTranslation").addEventListener("change", () => {
+            saveTranslationSettings();
+            if (document.getElementById("outgoingMessageInput").value.trim()) {
+                clearTimeout(outgoingPreviewTimeout);
+                outgoingPreviewTimeout = setTimeout(translateOutgoingPreview, 100);
+            }
+        });
+
+        document.getElementById("refreshModelsBtn").addEventListener("click", () => {
+            loadModels();
+        });
+
+        // Handle API Key Persistence & Debounced Model Discovery
         const apiKeyInput = document.getElementById('apiKey');
         if (localStorage.getItem('savedApiKey')) {
             apiKeyInput.value = localStorage.getItem('savedApiKey');
         }
+        let apiKeyDebounceTimer = null;
         apiKeyInput.addEventListener('input', (e) => {
             localStorage.setItem('savedApiKey', e.target.value.trim());
+            clearTimeout(apiKeyDebounceTimer);
+            apiKeyDebounceTimer = setTimeout(() => {
+                loadModels();
+            }, 500);
         });
+
+        // Initial setup on startup
+        applyLoadedSettings();
+        if (apiKeyInput.value.trim()) {
+            loadModels();
+        } else {
+            setTranslationEnabled(false);
+        }
 
         // Load history list on startup
         loadHistory();
