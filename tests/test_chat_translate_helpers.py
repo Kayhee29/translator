@@ -194,4 +194,3 @@ def test_strip_markdown_fence_leaves_unfenced_content_intact():
 
 def test_strip_markdown_fence_handles_surrounding_whitespace():
     assert strip_markdown_fence('   \n```json\n{"key": "value"}\n```\n  ') == '{"key": "value"}'
-

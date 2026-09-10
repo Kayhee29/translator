@@ -512,4 +512,3 @@ def test_chat_translate_rejects_missing_translated_text():
         )
 
     assert response.status_code == 500
-
