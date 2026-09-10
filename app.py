@@ -98,6 +98,8 @@ class ChatTranslateRequest(BaseModel):
     target_language: str
     messages: list[ChatTranslateMessage]
     message_ids_to_translate: list[str]
+    model: str | None = None
+    verify_back_translation: bool = False
 
 
 def split_bulk_paste_into_messages(text, role, id_prefix="bulk"):
@@ -122,7 +124,7 @@ def build_reduced_context_window(messages, message_ids_to_translate, prior_limit
     return messages[start_index:end_index]
 
 
-def build_chat_translate_prompt(target_language, context_messages, message_ids_to_translate):
+def build_chat_translate_prompt(target_language, context_messages, message_ids_to_translate, verify_back_translation: bool = False):
     conversation_lines = []
     for message in context_messages:
         conversation_lines.append(
@@ -132,13 +134,25 @@ def build_chat_translate_prompt(target_language, context_messages, message_ids_t
     conversation_block = "\n\n".join(conversation_lines)
     ids_block = ", ".join(message_ids_to_translate)
 
+    if verify_back_translation:
+        verify_instruction = (
+            "If the target language is NOT Vietnamese, and the detected source language of the message IS Vietnamese, "
+            "translate your primary translation back to Vietnamese and provide it in 'back_translated_text'. "
+            "Otherwise, 'back_translated_text' must be empty string \"\".\n"
+        )
+        json_example = '{"results":[{"id":"message-id","translated_text":"...","source_language":"...","back_translated_text":"..."}]}'
+    else:
+        verify_instruction = "The field 'back_translated_text' must be empty string \"\".\n"
+        json_example = '{"results":[{"id":"message-id","translated_text":"...","source_language":"...","back_translated_text":""}]}'
+
     return (
         "You are a context-aware translator.\n"
         f"Translate only these message ids: {ids_block}\n"
         f"Target language: {target_language}\n"
+        "Detect the source language for each translated message.\n"
         "Use the nearby conversation context to preserve meaning, tone, and references.\n"
-        "Return ONLY valid JSON in the form "
-        '{"results":[{"id":"message-id","translated_text":"...","source_language":"..."}]}\n\n'
+        f"{verify_instruction}"
+        f"Return ONLY valid JSON in the form {json_example}\n\n"
         f"Conversation:\n{conversation_block}"
     )
 
@@ -920,6 +934,11 @@ def chat_translate(request: ChatTranslateRequest, x_api_key: str = Header(None))
     if not request.target_language or not request.target_language.strip():
         raise HTTPException(status_code=400, detail="target_language is required")
 
+    if request.model is not None and not request.model.strip():
+        raise HTTPException(status_code=400, detail="model must not be empty")
+
+    selected_model = (request.model.strip() if request.model else None) or "gemini-3-flash"
+
     if not request.messages:
         raise HTTPException(status_code=400, detail="messages must not be empty")
 
@@ -949,15 +968,16 @@ def chat_translate(request: ChatTranslateRequest, x_api_key: str = Header(None))
         target_language=request.target_language.strip(),
         context_messages=context_messages,
         message_ids_to_translate=request.message_ids_to_translate,
+        verify_back_translation=request.verify_back_translation,
     )
 
     antigravity_url = os.getenv(
         "ANTIGRAVITY_URL",
-        "http://host.docker.internal:8045/v1/chat/completions",
+        DEFAULT_ANTIGRAVITY_URL,
     )
 
     payload = {
-        "model": "gemini-3-flash",
+        "model": selected_model,
         "messages": [
             {
                 "role": "user",
@@ -1002,8 +1022,17 @@ def chat_translate(request: ChatTranslateRequest, x_api_key: str = Header(None))
             raise HTTPException(status_code=500, detail=f"Missing translated ids: {missing_ids}")
 
         for item in results:
+            if not isinstance(item, dict):
+                raise HTTPException(status_code=500, detail="Each translation result must be an object")
             if not item.get("id") or not item.get("translated_text"):
                 raise HTTPException(status_code=500, detail="Each translation result must include id and translated_text")
+            back_translated = item.get("back_translated_text")
+            if back_translated is None:
+                item["back_translated_text"] = ""
+            elif not isinstance(back_translated, str):
+                raise HTTPException(status_code=500, detail="back_translated_text must be a string")
+            else:
+                item["back_translated_text"] = back_translated
 
         return {"results": results}
     except HTTPException:

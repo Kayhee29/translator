@@ -166,3 +166,15 @@ def test_normalize_models_response_rejects_invalid_data():
         normalize_models_response({})
     with pytest.raises(ValueError):
         normalize_models_response({"data": [{"id": ""}]})
+
+
+def test_build_chat_translate_prompt_with_verify_mentions_back_translation_and_vietnamese():
+    prompt = build_chat_translate_prompt(
+        target_language="English",
+        context_messages=[{"id": "m1", "role": "role_a", "content": "Xin chào"}],
+        message_ids_to_translate=["m1"],
+        verify_back_translation=True,
+    )
+    assert "back_translated_text" in prompt
+    assert "Vietnamese" in prompt
+

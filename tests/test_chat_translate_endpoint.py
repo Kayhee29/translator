@@ -256,3 +256,116 @@ def test_list_models_returns_502_on_upstream_failure():
         response = client.get("/models", headers={"x-api-key": "test-key"})
 
     assert response.status_code == 502
+
+
+def test_chat_translate_rejects_empty_model():
+    response = client.post(
+        "/chat_translate",
+        headers={"x-api-key": "test-key"},
+        json={
+            "target_language": "English",
+            "model": "   ",
+            "messages": [{"id": "m1", "role": "role_a", "content": "你好"}],
+            "message_ids_to_translate": ["m1"],
+        },
+    )
+    assert response.status_code == 400
+
+
+def test_chat_translate_forwards_model_and_returns_back_translation():
+    mocked_response = Mock()
+    mocked_response.json.return_value = {
+        "choices": [
+            {
+                "message": {
+                    "content": (
+                        '{"results":['
+                        '{"id":"m1","translated_text":"Hello","source_language":"Vietnamese","back_translated_text":"Xin chào"}'
+                        ']}'
+                    )
+                }
+            }
+        ]
+    }
+
+    with patch("app.requests.post", return_value=mocked_response) as mock_post:
+        response = client.post(
+            "/chat_translate",
+            headers={"x-api-key": "test-key"},
+            json={
+                "target_language": "English",
+                "model": "gemini-3.8-flash-high",
+                "verify_back_translation": True,
+                "messages": [{"id": "m1", "role": "role_a", "content": "Xin chào"}],
+                "message_ids_to_translate": ["m1"],
+            },
+        )
+
+    assert response.status_code == 200
+    sent_payload = mock_post.call_args[1]["json"]
+    assert sent_payload["model"] == "gemini-3.8-flash-high"
+    assert response.json()["results"][0]["back_translated_text"] == "Xin chào"
+
+
+def test_chat_translate_omitted_model_uses_gemini_3_flash():
+    mocked_response = Mock()
+    mocked_response.json.return_value = {
+        "choices": [
+            {
+                "message": {
+                    "content": (
+                        '{"results":['
+                        '{"id":"m1","translated_text":"Hello","source_language":"Vietnamese"}'
+                        ']}'
+                    )
+                }
+            }
+        ]
+    }
+
+    with patch("app.requests.post", return_value=mocked_response) as mock_post:
+        response = client.post(
+            "/chat_translate",
+            headers={"x-api-key": "test-key"},
+            json={
+                "target_language": "English",
+                "messages": [{"id": "m1", "role": "role_a", "content": "Xin chào"}],
+                "message_ids_to_translate": ["m1"],
+            },
+        )
+
+    assert response.status_code == 200
+    sent_payload = mock_post.call_args[1]["json"]
+    assert sent_payload["model"] == "gemini-3-flash"
+    assert response.json()["results"][0]["back_translated_text"] == ""
+
+
+def test_chat_translate_rejects_non_string_back_translation():
+    mocked_response = Mock()
+    mocked_response.json.return_value = {
+        "choices": [
+            {
+                "message": {
+                    "content": (
+                        '{"results":['
+                        '{"id":"m1","translated_text":"Hello","source_language":"Vietnamese","back_translated_text":123}'
+                        ']}'
+                    )
+                }
+            }
+        ]
+    }
+
+    with patch("app.requests.post", return_value=mocked_response):
+        response = client.post(
+            "/chat_translate",
+            headers={"x-api-key": "test-key"},
+            json={
+                "target_language": "English",
+                "messages": [{"id": "m1", "role": "role_a", "content": "Xin chào"}],
+                "message_ids_to_translate": ["m1"],
+            },
+        )
+
+    assert response.status_code == 500
+
