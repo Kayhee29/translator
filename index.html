@@ -1,0 +1,720 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Viet-Chinese AI Translator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 3px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+    </style>
+</head>
+
+<body class="bg-gray-50 min-h-screen p-3 md:p-6">
+
+    <div class="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
+
+        <div class="lg:col-span-2 space-y-4">
+            <!-- API Key -->
+            <div class="bg-white p-3 md:p-4 rounded-2xl shadow-sm border flex items-center gap-3">
+                <i class="fas fa-bolt text-yellow-500"></i>
+                <input type="password" id="apiKey" placeholder="Antigravity API Key..."
+                    class="flex-1 outline-none text-sm bg-transparent">
+                <span class="text-xs font-bold text-gray-400 shrink-0">VI ⇄ ZH</span>
+            </div>
+
+            <!-- Mode Switcher -->
+            <div class="bg-white rounded-2xl border shadow-sm p-2">
+                <div class="relative grid grid-cols-2 bg-gray-100 rounded-xl p-1">
+                    <div id="modeThumb" class="absolute top-1 left-1 h-[calc(100%-0.5rem)] w-[calc(50%-0.25rem)] bg-blue-600 rounded-lg transition-all duration-300"></div>
+                    <button id="quickModeBtn" class="relative z-10 px-4 py-2 text-sm font-semibold text-white focus:outline-none transition duration-200">Dịch nhanh</button>
+                    <button id="chatModeBtn" class="relative z-10 px-4 py-2 text-sm font-semibold text-gray-500 focus:outline-none transition duration-200">Chat Translate</button>
+                </div>
+            </div>
+
+            <!-- Quick Translate Panel -->
+            <div id="quickPanel" class="space-y-4">
+                <div
+                    class="bg-white rounded-3xl shadow-xl overflow-hidden flex flex-col h-[60vh] min-h-[350px] lg:h-[500px]">
+                    <div class="relative flex-1 flex flex-col">
+                        <textarea id="inputText"
+                            class="flex-1 p-4 md:p-6 pb-14 text-sm md:text-base leading-relaxed border-none outline-none resize-none"
+                            placeholder="Nhập Tiếng Việt hoặc Tiếng Trung..."></textarea>
+                        <div class="absolute bottom-3 right-4 flex gap-3">
+                            <button onclick="clearText()" title="Xóa trắng" class="text-gray-400 hover:text-red-500 bg-gray-100 hover:bg-red-50 w-9 h-9 rounded-xl flex items-center justify-center transition focus:outline-none">
+                                <i class="fas fa-times"></i>
+                            </button>
+                            <button onclick="pasteText()" title="Dán nhanh" class="text-gray-500 hover:text-blue-600 bg-blue-50 hover:bg-blue-100 w-9 h-9 rounded-xl flex items-center justify-center transition focus:outline-none">
+                                <i class="fas fa-paste"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="bg-blue-600 p-4 md:p-6 relative transition-all duration-300 shrink-0">
+                        <div id="loading" class="hidden absolute top-2 right-4 text-white/70 animate-pulse text-xs">
+                            Phân tích tiếng lóng...
+                        </div>
+                        <div id="outputText"
+                            class="text-sm md:text-base font-bold text-white leading-relaxed min-h-[40px] max-h-[200px] overflow-y-auto custom-scrollbar">
+                        </div>
+                        <div class="mt-3 md:mt-4 flex justify-end gap-2">
+                            <button onclick="copy('outputText')"
+                                class="bg-white/20 hover:bg-white/30 text-white px-4 py-2 rounded-xl transition text-sm">
+                                <i class="far fa-copy mr-1"></i> Copy
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Chat Translate Panel -->
+            <div id="chatPanel" class="hidden space-y-4">
+                <div class="bg-white rounded-3xl shadow-xl border p-4 md:p-5 space-y-4">
+                    <div class="flex flex-wrap items-center justify-between gap-3 border-b pb-3">
+                        <div>
+                            <div class="text-sm font-bold text-gray-700">Chat Translate</div>
+                            <div class="text-xs text-gray-400">Mô phỏng màn hình chat để dịch theo ngữ cảnh.</div>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="text-xs font-bold text-gray-400">Target:</span>
+                            <select id="chatTargetLanguage" class="rounded-xl border px-3 py-2 text-sm outline-none bg-gray-50 font-semibold text-gray-700 cursor-pointer">
+                                <option>Vietnamese</option>
+                                <option>English</option>
+                                <option>Chinese</option>
+                                <option>Japanese</option>
+                                <option>Korean</option>
+                            </select>
+                            <button id="clearChatBtn" class="px-3 py-2 rounded-xl bg-red-50 hover:bg-red-100 text-red-600 text-xs font-bold transition">Xóa hội thoại</button>
+                        </div>
+                    </div>
+                    
+                    <div id="chatError" class="hidden text-sm text-red-500 bg-red-50 border border-red-100 rounded-xl p-3 flex items-center gap-2">
+                        <i class="fas fa-exclamation-circle text-red-500"></i>
+                        <span id="chatErrorText"></span>
+                    </div>
+                    
+                    <!-- Chat Timeline -->
+                    <div id="chatTimeline" class="space-y-3 max-h-[48vh] overflow-y-auto custom-scrollbar p-1">
+                        <!-- Messages sit left (incoming) or right (outgoing) -->
+                    </div>
+
+                    <!-- Fixed Input Composers -->
+                    <div class="space-y-4 border-t pt-4">
+                        <!-- Incoming Composer -->
+                        <div class="rounded-2xl border bg-gray-50 p-4 space-y-3">
+                            <div class="text-sm font-bold text-gray-700 flex items-center gap-2"><i class="fas fa-comment-dots text-gray-400"></i> Tin nhắn đối phương</div>
+                            <textarea id="incomingMessageInput" class="w-full min-h-[90px] max-h-[150px] rounded-xl border bg-white p-3 text-sm outline-none resize-y focus:border-blue-300 transition" placeholder="Dán tin nhắn người đang chat với bạn..."></textarea>
+                            <div class="flex justify-end">
+                                <button id="appendIncomingBtn" class="px-4 py-2 rounded-xl bg-gray-900 hover:bg-gray-800 text-white text-xs font-bold transition flex items-center gap-1">
+                                    <i class="fas fa-plus"></i> Thêm vào hội thoại
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Outgoing Composer -->
+                        <div class="rounded-2xl border bg-blue-50/50 p-4 space-y-3 border-blue-100">
+                            <div class="text-sm font-bold text-blue-900 flex items-center gap-2"><i class="fas fa-paper-plane text-blue-500"></i> Tin nhắn của tôi</div>
+                            <textarea id="outgoingMessageInput" class="w-full min-h-[90px] max-h-[150px] rounded-xl border bg-white p-3 text-sm outline-none resize-y focus:border-blue-400 transition" placeholder="Nhập điều bạn muốn nói..."></textarea>
+                            <div id="outgoingPreviewWrap" class="hidden flex justify-end">
+                                <div class="max-w-[85%] rounded-2xl bg-blue-600 border border-blue-500 text-white px-4 py-3 shadow-sm">
+                                    <div id="outgoingPreviewStatus" class="text-[10px] uppercase tracking-wide font-bold text-white/60 mb-1"></div>
+                                    <div id="outgoingPreviewText" class="text-sm font-semibold whitespace-pre-wrap"></div>
+                                    <div id="outgoingPreviewSource" class="hidden mt-2 pt-2 border-t border-white/20 text-xs text-white/70 whitespace-pre-wrap"></div>
+                                </div>
+                            </div>
+                            <div class="flex justify-end">
+                                <button id="translateOutgoingBtn" class="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition flex items-center gap-1 shadow-sm shadow-blue-200">
+                                    <i class="fas fa-paper-plane"></i> Thêm bản dịch vào chat
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sidebar -->
+        <div class="bg-white rounded-3xl shadow-sm border p-4 md:p-6 overflow-y-auto max-h-[500px] lg:max-h-[600px] custom-scrollbar">
+            <!-- Sidebar for Quick Mode -->
+            <div id="historySidebar" class="space-y-3">
+                <h3 class="font-bold text-gray-700 mb-3 md:mb-4 flex items-center gap-2 text-sm md:text-base">
+                    <i class="fas fa-fire text-red-500"></i> Câu hay dùng nhất
+                </h3>
+                <div id="historyList" class="space-y-3">
+                </div>
+            </div>
+
+            <!-- Sidebar for Chat Mode -->
+            <div id="chatSidebar" class="hidden space-y-4">
+                <h3 class="font-bold text-gray-700 mb-3 text-sm md:text-base flex items-center gap-2">
+                    <i class="fas fa-info-circle text-blue-500"></i> Hướng dẫn nhanh
+                </h3>
+                <div class="space-y-3 text-sm text-gray-500 leading-relaxed">
+                    <div class="flex gap-2">
+                        <span class="font-bold text-blue-600">1.</span>
+                        <p>Dán tin nhắn nhận được từ đối phương vào ô <b>"Tin nhắn đối phương"</b> rồi bấm <b>"Thêm vào hội thoại"</b>.</p>
+                    </div>
+                    <div class="flex gap-2">
+                        <span class="font-bold text-blue-600">2.</span>
+                        <p>Nhập tin nhắn phản hồi của bạn vào ô <b>"Tin nhắn của tôi"</b>.</p>
+                    </div>
+                    <div class="flex gap-2">
+                        <span class="font-bold text-blue-600">3.</span>
+                        <p>Bấm <b>"Dịch và thêm vào hội thoại"</b> để hệ thống dịch theo ngữ cảnh lịch sử chat và tự động gửi lên dòng thời gian.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let timeout = null;
+        let outgoingPreviewTimeout = null;
+        let outgoingPreviewRequestId = 0;
+
+        // State Management
+        const appState = {
+            mode: "quick",
+            quick: {
+                input: "",
+                output: "",
+            },
+            chat: {
+                targetLanguage: "Vietnamese",
+                messages: [],
+                bulkPasteText: "",
+                bulkPasteRole: "role_a",
+                nextMessageId: 1,
+                isLoading: false,
+                error: "",
+                outgoingPreview: {
+                    source: "",
+                    translatedText: "",
+                    status: "idle",
+                    error: "",
+                },
+            }
+        };
+
+        // Tự động nhận diện Subpath, loại bỏ 'index.html' nếu có trên URL
+        let basePath = window.location.pathname;
+        if (window.location.protocol === 'file:') {
+            basePath = 'http://localhost:8000/';
+        } else if (basePath.endsWith('index.html')) {
+            basePath = basePath.replace('index.html', '');
+        } else if (!basePath.endsWith('/')) {
+            basePath += '/';
+        }
+
+        // Set Mode Toggling
+        function setMode(mode) {
+            appState.mode = mode;
+            const isQuick = mode === "quick";
+
+            // Toggle sections visibility
+            document.getElementById("quickPanel").classList.toggle("hidden", !isQuick);
+            document.getElementById("chatPanel").classList.toggle("hidden", isQuick);
+            document.getElementById("historySidebar").classList.toggle("hidden", !isQuick);
+            document.getElementById("chatSidebar").classList.toggle("hidden", isQuick);
+
+            // Toggle buttons colors
+            document.getElementById("quickModeBtn").classList.toggle("text-white", isQuick);
+            document.getElementById("quickModeBtn").classList.toggle("text-gray-500", !isQuick);
+            document.getElementById("chatModeBtn").classList.toggle("text-white", !isQuick);
+            document.getElementById("chatModeBtn").classList.toggle("text-gray-500", isQuick);
+
+            // Move the switch thumb
+            const thumb = document.getElementById("modeThumb");
+            thumb.style.transform = isQuick ? "translateX(0%)" : "translateX(100%)";
+            
+            if (!isQuick) {
+                renderChatTimeline();
+            }
+        }
+
+        document.getElementById("quickModeBtn").addEventListener("click", () => setMode("quick"));
+        document.getElementById("chatModeBtn").addEventListener("click", () => setMode("chat"));
+
+        // Initialize default mode
+        setMode("quick");
+
+        // Load history list (Quick translate)
+        async function loadHistory() {
+            try {
+                const res = await fetch(basePath + 'history');
+                const data = await res.json();
+                const container = document.getElementById('historyList');
+                container.innerHTML = data.map(item => `
+                    <div class="p-3 bg-gray-50 rounded-xl border border-gray-100 hover:border-blue-300 cursor-pointer transition" 
+                         onclick="useHistory('${item.original}')">
+                        <div class="text-xs text-gray-400 flex justify-between">
+                            <span>Sử dụng: ${item.count} lần</span>
+                        </div>
+                        <div class="text-sm font-semibold text-gray-700 truncate">${item.original}</div>
+                        <div class="text-sm text-blue-600 truncate">${item.translated}</div>
+                    </div>
+                `).join('');
+            } catch (e) { }
+        }
+
+        // Quick mode input handling
+        document.getElementById('inputText').addEventListener('input', (e) => {
+            clearTimeout(timeout);
+            const text = e.target.value.trim();
+            appState.quick.input = text;
+            if (!text) { 
+                document.getElementById('outputText').innerText = ""; 
+                appState.quick.output = "";
+                return; 
+            }
+
+            timeout = setTimeout(async () => {
+                const key = document.getElementById('apiKey').value;
+                if (!key) return;
+                document.getElementById('loading').classList.remove('hidden');
+
+                const response = await fetch(basePath + 'translate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'x-api-key': key },
+                    body: JSON.stringify({ text: text })
+                });
+                const data = await response.json();
+                document.getElementById('outputText').innerText = data.result;
+                appState.quick.output = data.result || "";
+                document.getElementById('loading').classList.add('hidden');
+                loadHistory(); 
+            }, 800);
+        });
+
+        function useHistory(text) {
+            document.getElementById('inputText').value = text;
+            document.getElementById('inputText').dispatchEvent(new Event('input'));
+        }
+
+        async function pasteText() {
+            try {
+                const text = await navigator.clipboard.readText();
+                if (text) {
+                    document.getElementById('inputText').value = text;
+                    document.getElementById('inputText').dispatchEvent(new Event('input'));
+                }
+            } catch (err) {
+                alert('Trình duyệt chưa cấp quyền dán tự động. Vui lòng bấm giữ ô nhập để dán!');
+            }
+        }
+
+        function clearText() {
+            document.getElementById('inputText').value = '';
+            document.getElementById('outputText').innerText = '';
+            appState.quick.input = "";
+            appState.quick.output = "";
+            clearTimeout(timeout);
+        }
+
+        function copy(id) {
+            navigator.clipboard.writeText(document.getElementById(id).innerText);
+        }
+
+        // Chat Translate Message Factory
+        function createChatMessage({ direction, content, translatedText = "", status = "idle", error = "" }) {
+            const id = `m${appState.chat.nextMessageId++}`;
+            return {
+                id,
+                role: direction === "incoming" ? "role_a" : "role_b",
+                direction,
+                content,
+                translatedText,
+                status,
+                error,
+            };
+        }
+
+        // Render Chat Messages Timeline
+        function renderChatTimeline() {
+            const container = document.getElementById("chatTimeline");
+
+            if (!appState.chat.messages.length) {
+                container.innerHTML = `
+                    <div class="rounded-2xl border border-dashed border-gray-200 p-6 text-sm text-gray-400 text-center">
+                        Chưa có hội thoại nào. Thêm tin nhắn đối phương hoặc nhập câu trả lời của bạn ở bên dưới.
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = appState.chat.messages.map((message) => {
+                const isIncoming = message.direction === "incoming";
+                return `
+                    <div class="flex ${isIncoming ? "justify-start" : "justify-end"}">
+                        <div class="max-w-[85%] rounded-2xl px-4 py-3 shadow-sm border ${isIncoming ? "bg-white border-gray-200 text-gray-700" : "bg-blue-600 border-blue-500 text-white"}">
+                            <div class="text-sm whitespace-pre-wrap">${message.content}</div>
+                            ${message.translatedText ? `
+                                <div class="mt-2 pt-2 border-t ${isIncoming ? "border-gray-100 text-gray-500 italic" : "border-white/20 text-white/90"}">
+                                    <div class="text-[10px] uppercase tracking-wide font-bold ${isIncoming ? "text-gray-400" : "text-white/60"}"><i class="fas fa-check-circle mr-1"></i> Bản dịch</div>
+                                    <div class="text-sm ${isIncoming ? "font-normal" : "font-semibold"} whitespace-pre-wrap">${message.translatedText}</div>
+                                </div>
+                            ` : ""}
+                            ${!message.translatedText && message.status === "translating" ? `
+                                <div class="mt-2 pt-2 border-t ${isIncoming ? "border-gray-100 text-gray-400 italic" : "border-white/20 text-white/90"} text-xs">
+                                    <i class="fas fa-spinner animate-spin mr-1"></i> Đang dịch...
+                                </div>
+                            ` : ""}
+                            ${message.error ? `<div class="mt-2 text-xs text-red-200 border-t border-white/10 pt-2"><i class="fas fa-exclamation-circle"></i> Lỗi: ${message.error}</div>` : ""}
+                        </div>
+                    </div>
+                `;
+            }).join("");
+
+            // Auto scroll to bottom
+            container.scrollTop = container.scrollHeight;
+        }
+
+        // Add keydown listener to submit incoming message on Enter
+        document.getElementById("incomingMessageInput").addEventListener("keydown", (event) => {
+            if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+                document.getElementById("appendIncomingBtn").click();
+            }
+        });
+
+        // Add incoming message action
+        document.getElementById("appendIncomingBtn").addEventListener("click", async () => {
+            const input = document.getElementById("incomingMessageInput");
+            const content = input.value.trim();
+            const key = document.getElementById("apiKey").value.trim();
+
+            if (!key) {
+                setChatError("Vui lòng nhập API Key.");
+                return;
+            }
+
+            if (!content) {
+                setChatError("Chưa có tin nhắn đối phương.");
+                return;
+            }
+
+            setChatError("");
+            const incomingMessage = createChatMessage({
+                direction: "incoming",
+                content,
+                status: "translating",
+            });
+            appState.chat.messages.push(incomingMessage);
+            input.value = "";
+            renderChatTimeline();
+
+            const payload = {
+                target_language: document.getElementById("chatTargetLanguage").value,
+                messages: appState.chat.messages.map((message) => ({
+                    id: message.id,
+                    role: message.role,
+                    content: message.content,
+                })),
+                message_ids_to_translate: appState.chat.messages.map((message) => message.id),
+            };
+
+            try {
+                const response = await fetch(basePath + "chat_translate", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "x-api-key": key,
+                    },
+                    body: JSON.stringify(payload),
+                });
+                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data.detail || "Không thể dịch tin nhắn đối phương.");
+                }
+
+                const translated = (data.results || []).find((item) => item.id === incomingMessage.id);
+                if (!translated) {
+                    throw new Error("Không tìm thấy bản dịch cho tin nhắn đối phương.");
+                }
+
+                incomingMessage.translatedText = translated.translated_text || "";
+                incomingMessage.status = "translated";
+                incomingMessage.error = "";
+            } catch (error) {
+                incomingMessage.status = "error";
+                incomingMessage.error = error.message;
+                setChatError(error.message);
+            }
+
+            renderChatTimeline();
+            if (document.getElementById("outgoingMessageInput").value.trim()) {
+                clearTimeout(outgoingPreviewTimeout);
+                outgoingPreviewTimeout = setTimeout(translateOutgoingPreview, 500);
+            }
+        });
+
+        // Chat Error helper
+        function setChatError(message = "") {
+            const errorEl = document.getElementById("chatError");
+            const textEl = document.getElementById("chatErrorText");
+            if (!message) {
+                textEl.textContent = "";
+                errorEl.classList.add("hidden");
+                return;
+            }
+
+            textEl.textContent = message;
+            errorEl.classList.remove("hidden");
+        }
+
+        // Build Payload
+        function getChatPayloadWithOutgoingDraft(outgoingContent) {
+            const baseMessages = appState.chat.messages.map((message) => ({
+                id: message.id,
+                role: message.role,
+                content: message.content,
+            }));
+
+            const outgoingDraft = createChatMessage({
+                direction: "outgoing",
+                content: outgoingContent,
+                status: "translating",
+            });
+
+            return {
+                draftMessage: outgoingDraft,
+                payload: {
+                    target_language: document.getElementById("chatTargetLanguage").value,
+                    messages: [
+                        ...baseMessages,
+                        {
+                            id: outgoingDraft.id,
+                            role: outgoingDraft.role,
+                            content: outgoingDraft.content,
+                        },
+                    ],
+                    message_ids_to_translate: [
+                        ...baseMessages.map((message) => message.id),
+                        outgoingDraft.id,
+                    ],
+                },
+            };
+        }
+
+        function renderOutgoingPreview() {
+            const preview = appState.chat.outgoingPreview;
+            const wrap = document.getElementById("outgoingPreviewWrap");
+            const status = document.getElementById("outgoingPreviewStatus");
+            const text = document.getElementById("outgoingPreviewText");
+            const source = document.getElementById("outgoingPreviewSource");
+
+            if (!preview.source && !preview.translatedText && preview.status !== "translating") {
+                wrap.classList.add("hidden");
+                return;
+            }
+
+            wrap.classList.remove("hidden");
+            source.textContent = preview.source ? `Ban goc: ${preview.source}` : "";
+            source.classList.toggle("hidden", !preview.source);
+
+            if (preview.status === "translating") {
+                status.innerHTML = '<i class="fas fa-spinner animate-spin mr-1"></i> Đang dịch';
+                text.textContent = "Đang tạo bản dịch theo ngữ cảnh...";
+                return;
+            }
+
+            if (preview.status === "error") {
+                status.innerHTML = '<i class="fas fa-exclamation-circle mr-1"></i> Lỗi dịch';
+                text.textContent = preview.error || "Không thể dịch bản nháp.";
+                return;
+            }
+
+            status.innerHTML = '<i class="fas fa-check-circle mr-1"></i> Bản dịch';
+            text.textContent = preview.translatedText || "Bản dịch se hien o day...";
+        }
+
+        function getOutgoingPreviewPayload(outgoingContent) {
+            const baseMessages = appState.chat.messages.map((message) => ({
+                id: message.id,
+                role: message.role,
+                content: message.content,
+            }));
+            const draftMessage = {
+                id: "draft",
+                role: "role_b",
+                content: outgoingContent,
+            };
+
+            return {
+                target_language: document.getElementById("chatTargetLanguage").value,
+                messages: [...baseMessages, draftMessage],
+                message_ids_to_translate: [...baseMessages.map((message) => message.id), draftMessage.id],
+            };
+        }
+
+        async function translateOutgoingPreview() {
+            const requestId = ++outgoingPreviewRequestId;
+            const key = document.getElementById("apiKey").value.trim();
+            const outgoingInput = document.getElementById("outgoingMessageInput");
+            const outgoingContent = outgoingInput.value.trim();
+            appState.chat.outgoingPreview.source = outgoingContent;
+
+            if (!key) {
+                appState.chat.outgoingPreview.status = outgoingContent ? "error" : "idle";
+                appState.chat.outgoingPreview.error = outgoingContent ? "Vui lòng nhập API Key." : "";
+                appState.chat.outgoingPreview.translatedText = "";
+                renderOutgoingPreview();
+                return;
+            }
+
+            if (!outgoingContent) {
+                appState.chat.outgoingPreview = {
+                    source: "",
+                    translatedText: "",
+                    status: "idle",
+                    error: "",
+                };
+                renderOutgoingPreview();
+                return;
+            }
+
+            setChatError("");
+            const payload = getOutgoingPreviewPayload(outgoingContent);
+            appState.chat.outgoingPreview.status = "translating";
+            appState.chat.outgoingPreview.error = "";
+            appState.chat.outgoingPreview.translatedText = "";
+            renderOutgoingPreview();
+
+            try {
+                const response = await fetch(basePath + "chat_translate", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "x-api-key": key,
+                    },
+                    body: JSON.stringify(payload),
+                });
+
+                const data = await response.json();
+                if (requestId !== outgoingPreviewRequestId) return;
+                if (!response.ok) {
+                    throw new Error(data.detail || "Không thể dịch tin nhắn.");
+                }
+
+                const translated = (data.results || []).find((item) => item.id === "draft");
+                if (!translated) {
+                    throw new Error("Không tìm thấy bản dịch cho tin nhắn của bạn.");
+                }
+
+                appState.chat.outgoingPreview.translatedText = translated.translated_text || "";
+                appState.chat.outgoingPreview.status = "translated";
+                appState.chat.outgoingPreview.error = "";
+            } catch (error) {
+                if (requestId !== outgoingPreviewRequestId) return;
+                appState.chat.outgoingPreview.status = "error";
+                appState.chat.outgoingPreview.error = error.message;
+                appState.chat.outgoingPreview.translatedText = "";
+            }
+
+            renderOutgoingPreview();
+        }
+
+        document.getElementById("outgoingMessageInput").addEventListener("input", () => {
+            clearTimeout(outgoingPreviewTimeout);
+            outgoingPreviewTimeout = setTimeout(translateOutgoingPreview, 500);
+        });
+
+        // Add keydown listener to submit outgoing message on Enter
+        document.getElementById("outgoingMessageInput").addEventListener("keydown", (event) => {
+            if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+                document.getElementById("translateOutgoingBtn").click();
+            }
+        });
+
+        // Add translated outgoing preview to the chat timeline.
+        document.getElementById("translateOutgoingBtn").addEventListener("click", () => {
+            const outgoingInput = document.getElementById("outgoingMessageInput");
+            const source = outgoingInput.value.trim();
+            const preview = appState.chat.outgoingPreview;
+
+            if (!source) {
+                setChatError("Chưa có tin nhắn của bạn.");
+                return;
+            }
+
+            if (preview.status !== "translated" || !preview.translatedText) {
+                setChatError("Vui lòng đợi bản dịch tự động hoàn tất.");
+                return;
+            }
+
+            appState.chat.messages.push(
+                createChatMessage({
+                    direction: "outgoing",
+                    content: source,
+                    translatedText: preview.translatedText,
+                    status: "translated",
+                })
+            );
+            outgoingInput.value = "";
+            appState.chat.outgoingPreview = {
+                source: "",
+                translatedText: "",
+                status: "idle",
+                error: "",
+            };
+            setChatError("");
+            renderOutgoingPreview();
+            renderChatTimeline();
+        });
+
+        // Clear Chat action
+        document.getElementById("clearChatBtn").addEventListener("click", () => {
+            appState.chat.messages = [];
+            appState.chat.outgoingPreview = {
+                source: "",
+                translatedText: "",
+                status: "idle",
+                error: "",
+            };
+            setChatError("");
+            document.getElementById("incomingMessageInput").value = "";
+            document.getElementById("outgoingMessageInput").value = "";
+            renderOutgoingPreview();
+            renderChatTimeline();
+        });
+
+        // State Synchronization
+        document.getElementById("chatTargetLanguage").addEventListener("change", (event) => {
+            appState.chat.targetLanguage = event.target.value;
+            if (document.getElementById("outgoingMessageInput").value.trim()) {
+                clearTimeout(outgoingPreviewTimeout);
+                outgoingPreviewTimeout = setTimeout(translateOutgoingPreview, 100);
+            }
+        });
+
+        // Handle API Key Persistence
+        const apiKeyInput = document.getElementById('apiKey');
+        if (localStorage.getItem('savedApiKey')) {
+            apiKeyInput.value = localStorage.getItem('savedApiKey');
+        }
+        apiKeyInput.addEventListener('input', (e) => {
+            localStorage.setItem('savedApiKey', e.target.value.trim());
+        });
+
+        // Load history list on startup
+        loadHistory();
+    </script>
+</body>
+
+</html>

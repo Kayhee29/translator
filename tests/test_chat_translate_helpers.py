@@ -1,0 +1,131 @@
+import pytest
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from app import (
+    build_chat_translate_prompt,
+    build_reduced_context_window,
+    split_bulk_paste_into_messages,
+)
+
+
+def test_build_reduced_context_window_includes_targets_and_prior_messages():
+    messages = [
+        {"id": "m1", "role": "role_a", "content": "A1"},
+        {"id": "m2", "role": "role_b", "content": "B1"},
+        {"id": "m3", "role": "role_a", "content": "A2"},
+        {"id": "m4", "role": "role_b", "content": "B2"},
+        {"id": "m5", "role": "role_a", "content": "A3"},
+        {"id": "m6", "role": "role_b", "content": "B3"},
+    ]
+
+    result = build_reduced_context_window(
+        messages=messages,
+        message_ids_to_translate=["m6"],
+        prior_limit=3,
+    )
+
+    assert [item["id"] for item in result] == ["m3", "m4", "m5", "m6"]
+
+
+def test_build_chat_translate_prompt_mentions_target_language_and_ids():
+    prompt = build_chat_translate_prompt(
+        target_language="Vietnamese",
+        context_messages=[
+            {"id": "m1", "role": "role_a", "content": "Hello"},
+            {"id": "m2", "role": "role_b", "content": "Xin chao"},
+        ],
+        message_ids_to_translate=["m2"],
+    )
+
+    assert "Vietnamese" in prompt
+    assert "m2" in prompt
+    assert "role_b" in prompt
+
+
+def test_split_bulk_paste_into_messages_uses_blank_lines():
+    messages = split_bulk_paste_into_messages(
+        text="first message\n\nsecond message\n\n\nthird message",
+        role="role_a",
+        id_prefix="bulk",
+    )
+
+    assert [item["id"] for item in messages] == ["bulk-1", "bulk-2", "bulk-3"]
+    assert [item["content"] for item in messages] == [
+        "first message",
+        "second message",
+        "third message",
+    ]
+
+
+def test_split_bulk_paste_into_messages_supports_windows_newlines():
+    messages = split_bulk_paste_into_messages(
+        text="first message\r\n\r\nsecond message\r\n \r\nthird message",
+        role="role_a",
+        id_prefix="bulk",
+    )
+
+    assert [item["content"] for item in messages] == [
+        "first message",
+        "second message",
+        "third message",
+    ]
+
+
+def test_build_reduced_context_window_raises_for_unknown_message_id():
+    messages = [{"id": "m1", "role": "role_a", "content": "Hello"}]
+
+    with pytest.raises(ValueError):
+        build_reduced_context_window(
+            messages=messages,
+            message_ids_to_translate=["missing"],
+            prior_limit=5,
+        )
+
+
+def test_build_reduced_context_window_raises_for_non_contiguous_targets():
+    messages = [
+        {"id": "m1", "role": "role_a", "content": "one"},
+        {"id": "m2", "role": "role_b", "content": "two"},
+        {"id": "m3", "role": "role_a", "content": "three"},
+    ]
+
+    with pytest.raises(ValueError):
+        build_reduced_context_window(
+            messages=messages,
+            message_ids_to_translate=["m1", "m3"],
+            prior_limit=2,
+        )
+
+
+def test_split_bulk_paste_into_messages_discards_empty_segments():
+    messages = split_bulk_paste_into_messages(
+        text="\n\nfirst\n\n   \n\nsecond\n\n",
+        role="role_b",
+        id_prefix="paste",
+    )
+
+    assert messages == [
+        {"id": "paste-1", "role": "role_b", "content": "first"},
+        {"id": "paste-2", "role": "role_b", "content": "second"},
+    ]
+
+
+def test_build_reduced_context_window_keeps_contiguous_slice_for_multiple_targets():
+    messages = [
+        {"id": "m1", "role": "role_a", "content": "one"},
+        {"id": "m2", "role": "role_b", "content": "two"},
+        {"id": "m3", "role": "role_a", "content": "three"},
+        {"id": "m4", "role": "role_b", "content": "four"},
+        {"id": "m5", "role": "role_a", "content": "five"},
+    ]
+
+    result = build_reduced_context_window(
+        messages=messages,
+        message_ids_to_translate=["m4", "m5"],
+        prior_limit=2,
+    )
+
+    assert [item["id"] for item in result] == ["m2", "m3", "m4", "m5"]
