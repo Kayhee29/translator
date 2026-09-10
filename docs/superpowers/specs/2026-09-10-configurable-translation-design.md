@@ -72,7 +72,7 @@ Extend the request with:
 }
 ```
 
-`target_language` and `model` must be non-empty. `verify_back_translation` defaults to `false` for compatibility with existing callers. The response keeps `result` and may include:
+The browser UI requires a successfully discovered model before enabling translation. For backward compatibility, API callers that omit `model` use the existing endpoint-specific default. A supplied empty `model` is rejected with `400`. `target_language` is required for new requests, while callers that omit it preserve the existing default behavior, and `verify_back_translation` defaults to `false`. The response keeps `result` and may include:
 
 ```json
 {
@@ -109,7 +109,7 @@ The request model is passed to the upstream chat-completions payload. The prompt
 ## Error handling
 
 - Return `401` when `x-api-key` is missing.
-- Return `400` for missing target language or model.
+- Return `400` for empty target language or supplied empty model.
 - Return `502` for upstream model-discovery failures or malformed upstream model data.
 - Return `500` for malformed translation JSON or missing required translation fields.
 - Frontend shows actionable Vietnamese error text and keeps the refresh action available.
