@@ -104,7 +104,7 @@
                             <button onclick="clearText()" title="Xóa trắng" class="text-gray-400 hover:text-red-500 bg-gray-100 hover:bg-red-50 w-9 h-9 rounded-xl flex items-center justify-center transition focus:outline-none">
                                 <i class="fas fa-times"></i>
                             </button>
-                            <button onclick="pasteText()" title="Dán nhanh" class="text-gray-500 hover:text-blue-600 bg-blue-50 hover:bg-blue-100 w-9 h-9 rounded-xl flex items-center justify-center transition focus:outline-none">
+                            <button type="button" onclick="pasteText()" title="Dán nhanh" aria-label="Dán nhanh" class="text-gray-500 hover:text-blue-600 bg-blue-50 hover:bg-blue-100 w-9 h-9 rounded-xl flex items-center justify-center transition focus:outline-none">
                                 <i class="fas fa-paste"></i>
                             </button>
                         </div>
@@ -578,14 +578,45 @@
         }
 
         async function pasteText() {
+            const input = document.getElementById('inputText');
+            input.focus();
+
             try {
-                const text = await navigator.clipboard.readText();
+                if (!window.isSecureContext || !navigator.clipboard) {
+                    throw new Error('Clipboard API requires a secure context');
+                }
+
+                let text = '';
+                const readText = navigator.clipboard?.readText;
+                if (typeof readText === 'function') {
+                    try {
+                        text = await readText.call(navigator.clipboard);
+                    } catch (readTextError) {
+                        // Safari may expose read() while rejecting readText().
+                    }
+                }
+
+                if (!text) {
+                    const read = navigator.clipboard?.read;
+                    if (typeof read === 'function') {
+                        const clipboardItems = await read.call(navigator.clipboard);
+                        for (const item of clipboardItems) {
+                            if (item.types.includes('text/plain')) {
+                                const blob = await item.getType('text/plain');
+                                text = await blob.text();
+                                break;
+                            }
+                        }
+                    }
+                }
+
                 if (text) {
-                    document.getElementById('inputText').value = text;
-                    document.getElementById('inputText').dispatchEvent(new Event('input'));
+                    input.value = text;
+                    input.dispatchEvent(new Event('input', { bubbles: true }));
                 }
             } catch (err) {
-                alert('Trình duyệt chưa cấp quyền dán tự động. Vui lòng bấm giữ ô nhập để dán!');
+                input.focus();
+                alert('Safari cần quyền clipboard và HTTPS để dán tự động. Nếu không hiện yêu cầu quyền, hãy chạm giữ ô nhập rồi chọn “Dán”.');
             }
         }
 
