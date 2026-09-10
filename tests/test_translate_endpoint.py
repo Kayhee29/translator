@@ -332,4 +332,3 @@ def test_translate_rejects_non_string_back_translation():
         )
 
     assert response.status_code == 500
-

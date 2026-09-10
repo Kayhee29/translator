@@ -724,7 +724,7 @@
                     role: message.role,
                     content: message.content,
                 })),
-                message_ids_to_translate: appState.chat.messages.map((message) => message.id),
+                message_ids_to_translate: [incomingMessage.id],
             };
 
             try {
