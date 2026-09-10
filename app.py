@@ -12,6 +12,8 @@ import re
 # Cố định thư mục gốc theo vị trí file app.py này
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
+DEFAULT_ANTIGRAVITY_URL = "http://host.docker.internal:8045/v1/chat/completions"
+
 app = FastAPI()
 db = TinyDB(os.path.join(BASE_DIR, 'history_db.json'))
 xianyu_db = TinyDB(os.path.join(BASE_DIR, 'xianyu_history_db.json'))
@@ -136,6 +138,37 @@ def build_chat_translate_prompt(target_language, context_messages, message_ids_t
         '{"results":[{"id":"message-id","translated_text":"...","source_language":"..."}]}\n\n'
         f"Conversation:\n{conversation_block}"
     )
+
+
+def build_models_url(url: str) -> str:
+    stripped_url = url.rstrip("/")
+    if stripped_url.endswith("/chat/completions"):
+        return stripped_url[:-len("/chat/completions")] + "/models"
+    elif stripped_url.endswith("/v1"):
+        return stripped_url + "/models"
+    else:
+        raise ValueError(f"Unsupported models URL base: {url}")
+
+
+def normalize_models_response(payload: dict) -> list[dict]:
+    if not isinstance(payload, dict):
+        raise ValueError("Payload must be a dictionary")
+    data = payload.get("data")
+    if not isinstance(data, list) or not data:
+        raise ValueError("Payload 'data' must be a non-empty list")
+
+    normalized = []
+    for item in data:
+        if not isinstance(item, dict):
+            raise ValueError("Model item must be a dictionary")
+        model_id = item.get("id")
+        if not isinstance(model_id, str) or not model_id.strip():
+            raise ValueError("Model item must have a non-empty string 'id'")
+        model_name = item.get("name")
+        if not isinstance(model_name, str) or not model_name.strip():
+            model_name = model_id
+        normalized.append({"id": model_id, "name": model_name})
+    return normalized
 
 
 @app.post("/capture_dom_product")

@@ -6,7 +6,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app import (
     build_chat_translate_prompt,
+    build_models_url,
     build_reduced_context_window,
+    normalize_models_response,
     split_bulk_paste_into_messages,
 )
 
@@ -129,3 +131,38 @@ def test_build_reduced_context_window_keeps_contiguous_slice_for_multiple_target
     )
 
     assert [item["id"] for item in result] == ["m2", "m3", "m4", "m5"]
+
+
+def test_build_models_url_replaces_chat_completions_suffix():
+    assert build_models_url("http://localhost:8045/v1/chat/completions") == "http://localhost:8045/v1/models"
+
+
+def test_build_models_url_handles_trailing_slash():
+    assert build_models_url("http://localhost:8045/v1/chat/completions/") == "http://localhost:8045/v1/models"
+
+
+def test_build_models_url_handles_v1_base():
+    assert build_models_url("http://localhost:8045/v1") == "http://localhost:8045/v1/models"
+    assert build_models_url("http://localhost:8045/v1/") == "http://localhost:8045/v1/models"
+
+
+def test_build_models_url_rejects_unsupported_url():
+    with pytest.raises(ValueError):
+        build_models_url("http://localhost:8045/unsupported")
+
+
+def test_normalize_models_response_returns_id_and_name():
+    assert normalize_models_response({"data": [{"id": "gemini-3.8-flash-high"}]}) == [
+        {"id": "gemini-3.8-flash-high", "name": "gemini-3.8-flash-high"}
+    ]
+
+
+def test_normalize_models_response_rejects_invalid_data():
+    with pytest.raises(ValueError):
+        normalize_models_response({"data": [{"name": "missing-id"}]})
+    with pytest.raises(ValueError):
+        normalize_models_response({"data": []})
+    with pytest.raises(ValueError):
+        normalize_models_response({})
+    with pytest.raises(ValueError):
+        normalize_models_response({"data": [{"id": ""}]})
