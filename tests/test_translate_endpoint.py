@@ -184,6 +184,22 @@ def test_translate_handles_sse_upstream_response():
     }
 
 
+def test_translate_reports_empty_sse_upstream_response():
+    mocked_response = Mock()
+    mocked_response.json.side_effect = ValueError("not a JSON envelope")
+    mocked_response.text = "data: [DONE]\n\n"
+
+    with patch("app.requests.post", return_value=mocked_response):
+        response = client.post(
+            "/translate",
+            headers={"x-api-key": "test-key"},
+            json={"text": "Xin chào", "target_language": "English"},
+        )
+
+    assert response.status_code == 502
+    assert response.json()["detail"] == "Upstream returned an empty SSE response"
+
+
 def test_translate_rejects_invalid_json_when_target_language_provided():
     mocked_response = Mock()
     mocked_response.json.return_value = {

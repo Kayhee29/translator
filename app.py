@@ -204,7 +204,7 @@ def parse_sse_chat_completion(text: str) -> dict:
         raise ValueError("Upstream SSE response must be text")
 
     content_parts = []
-    saw_data_event = False
+    saw_sse_event = False
 
     for line in text.splitlines():
         line = line.strip()
@@ -212,10 +212,10 @@ def parse_sse_chat_completion(text: str) -> dict:
             continue
 
         data = line[5:].strip()
+        saw_sse_event = True
         if data == "[DONE]":
             continue
 
-        saw_data_event = True
         event = json.loads(data)
         choices = event.get("choices") if isinstance(event, dict) else None
         if not isinstance(choices, list) or not choices:
@@ -233,8 +233,10 @@ def parse_sse_chat_completion(text: str) -> dict:
             raise ValueError("SSE content must be a string")
         content_parts.append(content)
 
-    if not saw_data_event:
+    if not saw_sse_event:
         raise ValueError("Upstream response is neither JSON nor SSE")
+    if not content_parts:
+        raise HTTPException(status_code=502, detail="Upstream returned an empty SSE response")
 
     return {"choices": [{"message": {"content": "".join(content_parts)}}]}
 

@@ -153,6 +153,26 @@ def test_chat_translate_handles_sse_upstream_response():
     ]
 
 
+def test_chat_translate_reports_empty_sse_upstream_response():
+    mocked_response = Mock()
+    mocked_response.json.side_effect = ValueError("not a JSON envelope")
+    mocked_response.text = "data: [DONE]\n\n"
+
+    with patch("app.requests.post", return_value=mocked_response):
+        response = client.post(
+            "/chat_translate",
+            headers={"x-api-key": "test-key"},
+            json={
+                "target_language": "Vietnamese",
+                "messages": [{"id": "m1", "role": "role_a", "content": "你好"}],
+                "message_ids_to_translate": ["m1"],
+            },
+        )
+
+    assert response.status_code == 502
+    assert response.json()["detail"] == "Upstream returned an empty SSE response"
+
+
 def test_chat_translate_accepts_out_of_order_upstream_results_but_preserves_id_mapping():
     mocked_response = Mock()
     mocked_response.json.return_value = {
