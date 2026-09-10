@@ -199,6 +199,53 @@ def strip_markdown_fence(text: str) -> str:
     return cleaned.strip()
 
 
+def parse_sse_chat_completion(text: str) -> dict:
+    if not isinstance(text, str):
+        raise ValueError("Upstream SSE response must be text")
+
+    content_parts = []
+    saw_data_event = False
+
+    for line in text.splitlines():
+        line = line.strip()
+        if not line.startswith("data:"):
+            continue
+
+        data = line[5:].strip()
+        if data == "[DONE]":
+            continue
+
+        saw_data_event = True
+        event = json.loads(data)
+        choices = event.get("choices") if isinstance(event, dict) else None
+        if not isinstance(choices, list) or not choices:
+            continue
+
+        choice = choices[0]
+        delta = choice.get("delta") if isinstance(choice, dict) else None
+        if not isinstance(delta, dict):
+            continue
+
+        content = delta.get("content")
+        if content is None:
+            continue
+        if not isinstance(content, str):
+            raise ValueError("SSE content must be a string")
+        content_parts.append(content)
+
+    if not saw_data_event:
+        raise ValueError("Upstream response is neither JSON nor SSE")
+
+    return {"choices": [{"message": {"content": "".join(content_parts)}}]}
+
+
+def parse_chat_completion_response(response) -> dict:
+    try:
+        return response.json()
+    except ValueError:
+        return parse_sse_chat_completion(response.text)
+
+
 def parse_translation_payload(content: str) -> tuple[dict | None, str]:
     if not isinstance(content, str) or not content.strip():
         raise HTTPException(status_code=500, detail="AI did not return valid JSON")
@@ -492,7 +539,7 @@ def translate_logic(request: TranslateRequest, x_api_key: str = Header(None)):
             headers={"Authorization": f"Bearer {x_api_key}"},
             timeout=90
         )
-        api_response = response.json()
+        api_response = parse_chat_completion_response(response)
         if 'choices' not in api_response:
             raise HTTPException(status_code=500, detail=f"Antigravity API Error: {api_response}")
 
@@ -1027,7 +1074,7 @@ def chat_translate(request: ChatTranslateRequest, x_api_key: str = Header(None))
             headers={"Authorization": f"Bearer {x_api_key}"},
             timeout=90,
         )
-        api_response = response.json()
+        api_response = parse_chat_completion_response(response)
         if "choices" not in api_response:
             raise HTTPException(status_code=500, detail=f"Antigravity API Error: {api_response}")
 

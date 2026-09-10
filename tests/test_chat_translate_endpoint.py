@@ -121,6 +121,38 @@ def test_chat_translate_returns_translations_for_requested_ids():
     assert response.json()["results"][1]["translated_text"] == "How much?"
 
 
+def test_chat_translate_handles_sse_upstream_response():
+    mocked_response = Mock()
+    mocked_response.json.side_effect = ValueError("not a JSON envelope")
+    mocked_response.text = (
+        'data: {"choices":[{"delta":{"role":"assistant"}}]}\n\n'
+        'data: {"choices":[{"delta":{"content":"{\\"results\\":[{\\"id\\":\\"m1\\",\\"translated_text\\":\\"Xin chao\\",\\"source_language\\":\\"Chinese\\"}]}"}}]}\n\n'
+        'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\n'
+        'data: [DONE]\n\n'
+    )
+
+    with patch("app.requests.post", return_value=mocked_response):
+        response = client.post(
+            "/chat_translate",
+            headers={"x-api-key": "test-key"},
+            json={
+                "target_language": "Vietnamese",
+                "messages": [{"id": "m1", "role": "role_a", "content": "你好"}],
+                "message_ids_to_translate": ["m1"],
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.json()["results"] == [
+        {
+            "id": "m1",
+            "translated_text": "Xin chao",
+            "source_language": "Chinese",
+            "back_translated_text": "",
+        }
+    ]
+
+
 def test_chat_translate_accepts_out_of_order_upstream_results_but_preserves_id_mapping():
     mocked_response = Mock()
     mocked_response.json.return_value = {
