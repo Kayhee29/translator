@@ -108,7 +108,7 @@ def test_translate_reverses_selected_language_input_to_vietnamese():
     assert "input is already in the selected target language" in prompt
 
 
-def test_translate_omitted_model_uses_gemini_3_flash_agent():
+def test_translate_omitted_model_uses_endpoint_compatible_default():
     mocked_response = Mock()
     mocked_response.json.return_value = {
         "choices": [
@@ -134,7 +134,7 @@ def test_translate_omitted_model_uses_gemini_3_flash_agent():
 
     assert response.status_code == 200
     sent_payload = mock_post.call_args[1]["json"]
-    assert sent_payload["model"] == "gemini-3-flash-agent"
+    assert sent_payload["model"] == "auto/best-chat"
 
 
 def test_translate_omitted_target_language_preserves_backward_compatibility():
@@ -159,7 +159,7 @@ def test_translate_omitted_target_language_preserves_backward_compatibility():
     assert response.status_code == 200
     assert response.json() == {"result": "你好"}
     sent_payload = mock_post.call_args[1]["json"]
-    assert sent_payload["model"] == "gemini-3-flash-agent"
+    assert sent_payload["model"] == "auto/best-chat"
     assert "specialized Vietnamese-Chinese translator" in sent_payload["messages"][0]["content"]
 
 

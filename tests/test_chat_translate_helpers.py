@@ -5,6 +5,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app import (
+    DEFAULT_ANTIGRAVITY_URL,
     build_chat_translate_prompt,
     build_models_url,
     build_reduced_context_window,
@@ -12,6 +13,10 @@ from app import (
     split_bulk_paste_into_messages,
     strip_markdown_fence,
 )
+
+
+def test_default_endpoint_uses_requested_20128_gateway():
+    assert DEFAULT_ANTIGRAVITY_URL == "http://192.168.1.179:20128/v1/chat/completions"
 
 
 def test_build_reduced_context_window_includes_targets_and_prior_messages():
