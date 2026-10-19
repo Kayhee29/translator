@@ -16,7 +16,7 @@ from app import (
 
 
 def test_default_endpoint_uses_requested_20128_gateway():
-    assert DEFAULT_ANTIGRAVITY_URL == "http://192.168.1.247:20128/v1/chat/completions"
+    assert DEFAULT_ANTIGRAVITY_URL == "http://127.0.0.1:20128/v1/chat/completions"
 
 
 def test_build_reduced_context_window_includes_targets_and_prior_messages():

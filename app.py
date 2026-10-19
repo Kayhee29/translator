@@ -12,7 +12,10 @@ import re
 # Cố định thư mục gốc theo vị trí file app.py này
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-DEFAULT_ANTIGRAVITY_URL = "http://192.168.1.247:20128/v1/chat/completions"
+# Dokploy runs this service with host networking, so the gateway on the same
+# machine is reachable through the host loopback interface. Deployments can
+# still override this with ANTIGRAVITY_URL when the gateway is remote.
+DEFAULT_ANTIGRAVITY_URL = "http://127.0.0.1:20128/v1/chat/completions"
 
 app = FastAPI()
 db = TinyDB(os.path.join(BASE_DIR, 'history_db.json'))
